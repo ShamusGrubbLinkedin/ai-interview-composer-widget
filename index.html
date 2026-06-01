@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Voice Widget — Animation Playground</title>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0d1117;
+      min-height: 100vh;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      color: white;
+    }
+
+    #root {
+      min-height: 100vh;
+      width: 100%;
+    }
+
+    .stage {
+      position: relative;
+      min-height: 100vh;
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .flow-panel {
+      position: absolute;
+      top: 44px;
+      left: 50%;
+      transform: translateX(-50%);
+    }
+
+    .controls-panel {
+      position: absolute;
+      bottom: 44px;
+      left: 50%;
+      transform: translateX(-50%);
+    }
+
+    @keyframes barPulse {
+      0%, 100% { transform: scaleY(1); }
+      50%       { transform: scaleY(0.12); }
+    }
+
+    .controls { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+    .btn-row  { display: flex; gap: 8px; }
+
+    .ctrl-btn {
+      background: transparent;
+      color: #6e7681;
+      border: 1px solid #21262d;
+      border-radius: 8px;
+      padding: 7px 18px;
+      font-size: 13px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .ctrl-btn:hover  { border-color: #30363d; color: #c9d1d9; background: #161b22; }
+    .ctrl-btn.active { border-color: #388bfd; color: #79c0ff; background: #1f6feb1a; }
+
+    .flow { display: flex; align-items: center; gap: 6px; font-size: 11px; }
+    .flow-node {
+      padding: 3px 10px;
+      border-radius: 6px;
+      border: 1px solid #21262d;
+      color: #484f58;
+      transition: all 0.2s;
+    }
+    .flow-node.active { border-color: #388bfd; color: #79c0ff; background: #1f6feb11; }
+    .flow-arrow { color: #21262d; }
+
+    .auto-label {
+      display: flex; align-items: center; gap: 8px;
+      color: #484f58; font-size: 12px; cursor: pointer; user-select: none;
+    }
+    .toggle-track {
+      width: 32px; height: 18px; border-radius: 9px;
+      background: #21262d; border: 1px solid #30363d;
+      position: relative; transition: background 0.2s, border-color 0.2s;
+    }
+    .toggle-track.on { background: #1f6feb; border-color: #388bfd; }
+    .toggle-knob {
+      position: absolute; width: 12px; height: 12px;
+      background: white; border-radius: 50%;
+      top: 2px; left: 2px; transition: transform 0.2s;
+    }
+    .toggle-track.on .toggle-knob { transform: translateX(14px); }
+
+    .hint { color: #30363d; font-size: 11px; text-align: center; }
+    .hint em { color: #e3b341; font-style: normal; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+
+    const EASE = '0.5s cubic-bezier(0.4, 0, 0.2, 1)';
+
+    // 31 bar heights from Figma (AI Voice Open)
+    const FULL_BARS = [
+      8, 2, 4, 6, 4, 8, 6, 12, 4, 4, 8, 12, 8, 4, 8,
+      8, 2, 4, 6, 4, 8, 6, 12, 4, 4, 8, 12, 8, 4, 8, 10,
+    ];
+
+    // Closed: only the 3 centre bars visible; rest collapse to 0 and slide in on open
+    const CLOSED_BARS = FULL_BARS.map((_, i) => {
+      if (i === 14) return 8;
+      if (i === 15) return 12;
+      if (i === 16) return 8;
+      return 0;
+    });
+
+    // Staggered pulse timings – pseudo-random via primes
+    const BAR_ANIM = FULL_BARS.map((_, i) => ({
+      dur: (0.42 + (i * 13 % 9) * 0.09).toFixed(2) + 's',
+      dly: '-' + ((i * 7 % 17) * 0.035).toFixed(2) + 's',
+    }));
+
+    // State config
+    // Pill total = 28 + 48 + 12 + waveWidth + 12 + 48 + 28 = 176 + waveWidth
+    // text mode: wave collapses (waveWidth = -12 cancels its gap), keyboard grows to 210px
+    const STATES = {
+      closed: {
+        label: 'Closed', waveWidth: 48,
+        micBg: '#3d4045', waveBg: '#3d4045', keyBg: '#3d4045',
+        bars: CLOSED_BARS, animating: false, showStop: false, textMode: false,
+      },
+      ai: {
+        label: 'AI Talking', waveWidth: 132,
+        micBg: '#493d57', waveBg: '#523a51', keyBg: '#3d4045',
+        bars: FULL_BARS, animating: true, showStop: true, textMode: false,
+      },
+      person: {
+        label: 'Person Talking', waveWidth: 112,
+        micBg: '#004c33', waveBg: '#004c33', keyBg: '#3d4045',
+        bars: FULL_BARS, animating: true, showStop: false, textMode: false,
+      },
+      text: {
+        label: 'Text Input', waveWidth: -12,
+        micBg: '#3d4045', waveBg: '#3d4045', keyBg: '#2f2f2f',
+        bars: CLOSED_BARS, animating: false, showStop: false, textMode: true,
+      },
+    };
+
+    const STATE_KEYS = Object.keys(STATES);
+
+    // Icons
+    const MicIcon = () => (
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ transform: 'scale(1.25)' }}>
+        <rect x="5" y="1" width="6" height="8.5" rx="3" fill="white" />
+        <path d="M3 7.5A5 5 0 0 0 13 7.5" stroke="white" strokeWidth="1.5" strokeLinecap="round" fill="none" />
+        <line x1="8" y1="12.5" x2="8" y2="15" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
+        <line x1="5.5" y1="15" x2="10.5" y2="15" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    );
+
+    const KeyboardIcon = () => (
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ transform: 'scale(1.5)' }}>
+        <rect x="1" y="3.5" width="14" height="9" rx="1.5" stroke="white" strokeWidth="1.2" />
+        <rect x="3"   y="6" width="2" height="2"   rx="0.5" fill="white" />
+        <rect x="7"   y="6" width="2" height="2"   rx="0.5" fill="white" />
+        <rect x="11"  y="6" width="2" height="2"   rx="0.5" fill="white" />
+        <rect x="4.5" y="9" width="7" height="1.5" rx="0.5" fill="white" />
+      </svg>
+    );
+
+    const StopIcon = () => (
+      <svg width="10" height="10" viewBox="0 0 10 10">
+        <rect width="10" height="10" rx="2" fill="rgba(255,255,255,0.9)" />
+      </svg>
+    );
+
+    const ArrowUpIcon = () => (
+      <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+        <path d="M5 8.5V1.5" stroke="white" strokeWidth="1.6" strokeLinecap="round"/>
+        <path d="M2 4.5L5 1.5L8 4.5" stroke="white" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+      </svg>
+    );
+
+    // Waveform bars
+    function WaveformBars({ bars, animating }) {
+      return (
+        <div style={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+          {bars.map((h, i) => (
+            <div key={i} style={{
+              width: 3,
+              height: Math.max(h * 1.2, 0),
+              background: 'white',
+              borderRadius: 1,
+              flexShrink: 0,
+              transformOrigin: 'center',
+              transition: isLive ? 'height 0.08s ease-out' : ('height ' + EASE),
+              animation: animating && h > 0
+                ? 'barPulse ' + BAR_ANIM[i].dur + ' ' + BAR_ANIM[i].dly + ' ease-in-out infinite'
+                : 'none',
+            }} />
+          ))}
+        </div>
+      );
+    }
+
+    // Voice Widget
+    // Layout: [28px] [48px circle] [12px] [wave btn] [12px] [48px/210px keyboard] [28px]
+    // inline-flex pill hugs its content; as waveWidth transitions the pill grows with it.
+    function VoiceWidget({ stateKey, onKeyboardClick, onMicClick, typedText, liveBars }) {
+      const cfg = STATES[stateKey];
+      const displayBars = liveBars || cfg.bars;
+      // suppress CSS animation when JS is driving bar heights live
+      const isLive = !!liveBars;
+      const circleStyle = bg => ({
+        width: 48, height: 48, borderRadius: '50%', background: bg,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        flexShrink: 0, transition: 'background ' + EASE,
+      });
+
+      return (
+        <div style={{
+          background: '#1b1f23',
+          borderRadius: 999,
+          boxShadow: '0 2px 6px rgba(26, 22, 254, 0.22)',
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 12,
+          padding: '8px 28px',
+        }}>
+
+          {/* Left: mic circle — click to start/stop listening */}
+          <div style={{ ...circleStyle(cfg.micBg), cursor: 'pointer' }} onClick={onMicClick}>
+            <MicIcon />
+          </div>
+
+          {/* Centre: animated waveform button */}
+          <div style={{
+            position: 'relative',
+            width: Math.max(cfg.waveWidth, 0),
+            marginLeft: Math.min(cfg.waveWidth, 0),
+            height: 48,
+            borderRadius: 999,
+            background: cfg.waveBg,
+            flexShrink: 0,
+            overflow: 'hidden',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            transition: 'width ' + EASE + ', margin-left ' + EASE + ', background ' + EASE,
+          }}>
+            <WaveformBars bars={displayBars} animating={!isLive && cfg.animating} />
+            <div style={{
+              position: 'absolute', right: 10, top: '50%',
+              transform: cfg.showStop
+                ? 'translateY(-50%) scale(1)'
+                : 'translateY(-50%) scale(0.3)',
+              opacity: cfg.showStop ? 1 : 0,
+              transition: 'opacity 0.3s ease, transform 0.3s ease',
+              pointerEvents: 'none',
+            }}>
+              <StopIcon />
+            </div>
+          </div>
+
+          {/* Right: keyboard / text input — click to toggle text mode */}
+          <div
+            onClick={onKeyboardClick}
+            style={{
+              position: 'relative',
+              width: cfg.textMode ? 210 : 48,
+              height: 48,
+              borderRadius: 999,
+              background: cfg.keyBg,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+              overflow: 'hidden',
+              cursor: 'pointer',
+              transition: 'width ' + EASE + ', background ' + EASE,
+            }}
+          >
+            {/* Keyboard icon — fades out when text mode opens */}
+            <div style={{
+              position: 'absolute',
+              opacity: cfg.textMode ? 0 : 1,
+              transition: 'opacity 0.25s ease',
+              pointerEvents: 'none',
+            }}>
+              <KeyboardIcon />
+            </div>
+
+            {/* Text input content — fades in after expansion */}
+            <div style={{
+              position: 'absolute',
+              inset: 0,
+              display: 'flex',
+              alignItems: 'center',
+              padding: '4px 6px 4px 12px',
+              opacity: cfg.textMode ? 1 : 0,
+              transition: cfg.textMode ? 'opacity 0.2s ease 0.3s' : 'opacity 0.15s ease',
+              pointerEvents: cfg.textMode ? 'auto' : 'none',
+            }}>
+              <span style={{
+                flex: 1,
+                color: 'rgba(255,255,255,0.9)',
+                fontSize: 14,
+                lineHeight: '21px',
+                letterSpacing: '-0.15px',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+              }}>
+                {typedText}
+              </span>
+              <div style={{
+                width: 26,
+                height: 26,
+                borderRadius: '50%',
+                background: '#71b7fb',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+                marginLeft: 8,
+              }}>
+                <ArrowUpIcon />
+              </div>
+            </div>
+          </div>
+
+        </div>
+      );
+    }
+
+    // App
+    function App() {
+      const [stateKey, setStateKey] = useState('closed');
+      const [autoPlay, setAutoPlay] = useState(false);
+      const [typedText, setTypedText] = useState('');
+      const [liveBars, setLiveBars] = useState(null);
+      const timerRef = useRef(null);
+      const typeRef = useRef(null);
+      const typeStartRef = useRef(null);
+      const streamRef = useRef(null);
+      const analyserRef = useRef(null);
+      const audioCtxRef = useRef(null);
+      const rafRef = useRef(null);
+      const PLACEHOLDER = 'Find Quinn Montgomery';
+
+      const stopMic = () => {
+        cancelAnimationFrame(rafRef.current);
+        if (streamRef.current) {
+          streamRef.current.getTracks().forEach(t => t.stop());
+          streamRef.current = null;
+        }
+        if (audioCtxRef.current) {
+          audioCtxRef.current.close();
+          audioCtxRef.current = null;
+        }
+        analyserRef.current = null;
+        setLiveBars(null);
+      };
+
+      const startMic = async () => {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+          streamRef.current = stream;
+          const ctx = new AudioContext();
+          audioCtxRef.current = ctx;
+          const source = ctx.createMediaStreamSource(stream);
+          const analyser = ctx.createAnalyser();
+          analyser.fftSize = 256;
+          analyser.smoothingTimeConstant = 0.75;
+          source.connect(analyser);
+          analyserRef.current = analyser;
+          setAutoPlay(false);
+          setStateKey('person');
+
+          const NUM_BARS = FULL_BARS.length;
+          const tick = () => {
+            const time = new Uint8Array(analyser.fftSize);
+            analyser.getByteTimeDomainData(time);
+
+            // Compute RMS amplitude (0–1)
+            let sum = 0;
+            for (let s = 0; s < time.length; s++) {
+              const v = (time[s] - 128) / 128;
+              sum += v * v;
+            }
+            const rms = Math.sqrt(sum / time.length);
+
+            // Map each bar to its own waveform sample so bars vary individually
+            const bars = FULL_BARS.map((baseH, i) => {
+              const sampleIdx = Math.floor((i / NUM_BARS) * time.length);
+              // Deviation of this sample from centre (0–1)
+              const sampleAmp = Math.abs((time[sampleIdx] - 128) / 128);
+              // Blend RMS (global energy) with per-sample variation for natural look
+              const amp = rms * 0.6 + sampleAmp * 0.4;
+              // Scale up: quiet speech ~0.05 rms, loud ~0.3+
+              const scaled = Math.min(amp * 4.5, 1);
+              return Math.max(2, Math.round(scaled * 14));
+            });
+            setLiveBars(bars);
+            rafRef.current = requestAnimationFrame(tick);
+          };
+          rafRef.current = requestAnimationFrame(tick);
+        } catch (e) {
+          alert('Microphone access denied or unavailable.\n\nIf using Chrome, open via localhost instead of file://');
+        }
+      };
+
+      const handleMicClick = () => {
+        if (streamRef.current) {
+          stopMic();
+          setStateKey('closed');
+        } else {
+          startMic();
+        }
+      };
+
+      // Clean up mic when switching away from person state via controls
+      const pick = k => {
+        if (k !== 'person') stopMic();
+        setAutoPlay(false);
+        setStateKey(k);
+      };
+
+      useEffect(() => {
+        if (autoPlay) {
+          timerRef.current = setInterval(() => {
+            setStateKey(prev => {
+              const i = STATE_KEYS.indexOf(prev);
+              return STATE_KEYS[(i + 1) % STATE_KEYS.length];
+            });
+          }, 2200);
+        }
+        return () => clearInterval(timerRef.current);
+      }, [autoPlay]);
+
+      // Typing animation: starts after the expansion transition (~500ms) completes
+      useEffect(() => {
+        clearInterval(typeRef.current);
+        clearTimeout(typeStartRef.current);
+        setTypedText('');
+        if (stateKey === 'text') {
+          let i = 0;
+          typeStartRef.current = setTimeout(() => {
+            typeRef.current = setInterval(() => {
+              i++;
+              setTypedText(PLACEHOLDER.slice(0, i));
+              if (i >= PLACEHOLDER.length) clearInterval(typeRef.current);
+            }, 38);
+          }, 520);
+        }
+        return () => {
+          clearInterval(typeRef.current);
+          clearTimeout(typeStartRef.current);
+        };
+      }, [stateKey]);
+
+      const handleKeyboardClick = () => {
+        setAutoPlay(false);
+        setStateKey(prev => prev === 'text' ? 'closed' : 'text');
+      };
+
+      return (
+        <div className="stage">
+          <div className="flow-panel">
+            <div className="flow">
+              {STATE_KEYS.map((k, i) => (
+                <React.Fragment key={k}>
+                  {i > 0 && <span className="flow-arrow">&rarr;</span>}
+                  <div className={'flow-node' + (stateKey === k ? ' active' : '')}>
+                    {STATES[k].label}
+                  </div>
+                </React.Fragment>
+              ))}
+            </div>
+          </div>
+
+          <VoiceWidget stateKey={stateKey} onKeyboardClick={handleKeyboardClick} onMicClick={handleMicClick} typedText={typedText} liveBars={liveBars} />
+
+          <div className="controls-panel">
+            <div className="controls">
+              <div className="btn-row">
+                {STATE_KEYS.map(k => (
+                  <button
+                    key={k}
+                    className={'ctrl-btn' + (stateKey === k ? ' active' : '')}
+                    onClick={() => pick(k)}
+                  >
+                    {STATES[k].label}
+                  </button>
+                ))}
+              </div>
+              <label className="auto-label" onClick={() => setAutoPlay(p => !p)}>
+                <div className={'toggle-track' + (autoPlay ? ' on' : '')}>
+                  <div className="toggle-knob" />
+                </div>
+                Auto-cycle states
+              </label>
+              <div className="hint">
+                Edit <em>STATES</em> config &amp; <em>BAR_ANIM</em> timings at the top of the script to tune the feel
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
