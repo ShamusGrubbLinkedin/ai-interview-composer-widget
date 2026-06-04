@@ -1,0 +1,845 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Interview Composer — Layout</title>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0d1117;
+      min-height: 100vh;
+      font-family: 'SF Pro Text', 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      color: white;
+    }
+
+    #root { min-height: 100vh; width: 100%; }
+
+    @keyframes barPulse {
+      0%, 100% { transform: scaleY(1); }
+      50%       { transform: scaleY(0.12); }
+    }
+
+    @keyframes typingDot {
+      0%, 100% { opacity: 0.3; transform: translateY(0); }
+      50%       { opacity: 1;   transform: translateY(-4px); }
+    }
+
+    @keyframes cursorBlink {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0; }
+    }
+
+    @keyframes fadeInUp {
+      from { opacity: 0; transform: translateY(10px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes slideUp {
+      from { opacity: 0; transform: translateY(16px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes popIn {
+      0%   { opacity: 0; transform: scale(0.92); }
+      60%  { transform: scale(1.03); }
+      100% { opacity: 1; transform: scale(1); }
+    }
+
+    /* scrollbar hidden but functional */
+    .chat-scroll::-webkit-scrollbar { display: none; }
+    .chat-scroll { scrollbar-width: none; }
+
+    input::placeholder { color: #999999; }
+
+    /* state controls (outside card) */
+    .controls-bar {
+      position: fixed;
+      bottom: 28px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 8px;
+    }
+    .ctrl-btn {
+      background: transparent;
+      color: #6e7681;
+      border: 1px solid #21262d;
+      border-radius: 8px;
+      padding: 7px 18px;
+      font-size: 13px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      font-family: inherit;
+    }
+    .ctrl-btn:hover  { border-color: #30363d; color: #c9d1d9; background: #161b22; }
+    .ctrl-btn.active { border-color: #388bfd; color: #79c0ff; background: #1f6feb1a; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+
+    const EASE = '0.5s cubic-bezier(0.4, 0, 0.2, 1)';
+
+    const FULL_BARS = [
+      8, 2, 4, 6, 4, 8, 6, 12, 4, 4, 8, 12, 8, 4, 8,
+      8, 2, 4, 6, 4, 8, 6, 12, 4, 4, 8, 12, 8, 4, 8, 10,
+    ];
+
+    const CLOSED_BARS = FULL_BARS.map((_, i) => {
+      if (i === 14) return 8;
+      if (i === 15) return 12;
+      if (i === 16) return 8;
+      return 0;
+    });
+
+    const BAR_ANIM = FULL_BARS.map((_, i) => ({
+      dur: (0.42 + (i * 13 % 9) * 0.09).toFixed(2) + 's',
+      dly: '-' + ((i * 7 % 17) * 0.035).toFixed(2) + 's',
+    }));
+
+    const STATES = {
+      closed: {
+        label: 'Closed', waveWidth: 48,
+        micBg: '#3d4045', waveBg: '#3d4045', keyBg: '#3d4045',
+        bars: CLOSED_BARS, animating: false, showStop: false, textMode: false,
+      },
+      ai: {
+        label: 'AI Talking', waveWidth: 132,
+        micBg: '#493d57', waveBg: '#523a51', keyBg: '#3d4045',
+        bars: FULL_BARS, animating: true, showStop: true, textMode: false,
+      },
+      person: {
+        label: 'Person Talking', waveWidth: 112,
+        micBg: '#004c33', waveBg: '#004c33', keyBg: '#3d4045',
+        bars: FULL_BARS, animating: true, showStop: false, textMode: false,
+      },
+      text: {
+        label: 'Text Input', waveWidth: 0,
+        micBg: '#3d4045', waveBg: '#3d4045', keyBg: '#2f2f2f',
+        bars: CLOSED_BARS, animating: false, showStop: false, textMode: true,
+      },
+    };
+
+    const STATE_KEYS = Object.keys(STATES);
+
+    // ── Icons ────────────────────────────────────────────────────────────────
+    const MicIcon = () => (
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ transform: 'scale(1.25)' }}>
+        <rect x="5" y="1" width="6" height="8.5" rx="3" fill="white" />
+        <path d="M3 7.5A5 5 0 0 0 13 7.5" stroke="white" strokeWidth="1.5" strokeLinecap="round" fill="none" />
+        <line x1="8" y1="12.5" x2="8" y2="15" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
+        <line x1="5.5" y1="15" x2="10.5" y2="15" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    );
+
+    const MicMutedIcon = () => (
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ transform: 'scale(1.25)' }}>
+        <rect x="5" y="1" width="6" height="8.5" rx="3" fill="white" />
+        <path d="M3 7.5A5 5 0 0 0 13 7.5" stroke="white" strokeWidth="1.5" strokeLinecap="round" fill="none" />
+        <line x1="8" y1="12.5" x2="8" y2="15" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
+        <line x1="5.5" y1="15" x2="10.5" y2="15" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
+        <line x1="2.5" y1="2.5" x2="13.5" y2="13.5" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    );
+
+    const KeyboardIcon = () => (
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ transform: 'scale(1.5) translateY(1px)' }}>
+        <rect x="1" y="3.5" width="14" height="9" rx="1.5" stroke="white" strokeWidth="1.2" />
+        <rect x="3"   y="6" width="2" height="2"   rx="0.5" fill="white" />
+        <rect x="7"   y="6" width="2" height="2"   rx="0.5" fill="white" />
+        <rect x="11"  y="6" width="2" height="2"   rx="0.5" fill="white" />
+        <rect x="4.5" y="9" width="7" height="1.5" rx="0.5" fill="white" />
+      </svg>
+    );
+
+    const StopIcon = () => (
+      <div style={{ width: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+        <svg width="10" height="10" viewBox="0 0 10 10">
+          <rect width="10" height="10" rx="2" fill="rgba(255,255,255,0.9)" />
+        </svg>
+      </div>
+    );
+
+    const ArrowUpIcon = () => (
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+        <path d="M7 12V2" stroke="#0B1219" strokeWidth="2" strokeLinecap="round"/>
+        <path d="M3 6L7 2L11 6" stroke="#0B1219" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+      </svg>
+    );
+
+    const SparkleIcon = () => (
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+        <path d="M8 1l1.5 4.5L14 7l-4.5 1.5L8 13l-1.5-4.5L2 7l4.5-1.5Z" fill="#71B7FB" />
+      </svg>
+    );
+
+    // ── Waveform bars ─────────────────────────────────────────────────────────
+    // When animating, drives bar heights via requestAnimationFrame using layered
+    // sine waves that mimic real speech: phrase envelope + syllable bursts + spatial propagation.
+    function WaveformBars({ bars, animating }) {
+      const [heights, setHeights] = useState(bars);
+      const rafRef = useRef(null);
+      const startRef = useRef(null);
+
+      useEffect(() => {
+        if (!animating) {
+          setHeights(bars);
+          return;
+        }
+        startRef.current = performance.now();
+        const tick = (now) => {
+          const t = (now - startRef.current) / 1000;
+
+          // Phrase envelope (~0.18Hz) — slow energy rise/fall like speaking in sentences
+          const phrase = 0.5 + 0.5 * Math.sin(2 * Math.PI * 0.18 * t);
+          // Syllable bursts (~2.8Hz) — typical speech syllable rate
+          const syllable = 0.5 + 0.5 * Math.sin(2 * Math.PI * 2.8 * t + 1.1);
+          // Micro variation (~7.3Hz) — formant-like fine detail
+          const micro = 0.5 + 0.5 * Math.sin(2 * Math.PI * 7.3 * t + 0.5);
+          // Combined envelope: phrase gates overall energy, syllable/micro add texture
+          const envelope = Math.pow(phrase, 0.5) * (0.35 + 0.45 * syllable + 0.2 * micro);
+
+          const n = bars.length;
+          const newHeights = bars.map((baseH, i) => {
+            if (baseH === 0) return 0;
+            const pos = i / n;
+            // Two waves propagating in opposite directions at different speeds —
+            // creates the organic left-right energy flow of a voice waveform
+            const wave1 = 0.5 + 0.5 * Math.sin(pos * Math.PI * 6 - 2 * Math.PI * 3.5 * t);
+            const wave2 = 0.5 + 0.5 * Math.sin(pos * Math.PI * 3 + 2 * Math.PI * 2.1 * t + 0.7);
+            const spatial = 0.4 * wave1 + 0.6 * wave2;
+            const h = baseH * 1.4 * envelope * (0.2 + 0.8 * spatial);
+            return Math.max(1.5, Math.min(h, 16));
+          });
+
+          setHeights(newHeights);
+          rafRef.current = requestAnimationFrame(tick);
+        };
+        rafRef.current = requestAnimationFrame(tick);
+        return () => cancelAnimationFrame(rafRef.current);
+      }, [animating]);
+
+      return (
+        <div style={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+          {heights.map((h, i) => (
+            <div key={i} style={{
+              width: 3,
+              height: Math.max(h * 1.2, 0),
+              background: 'white',
+              borderRadius: 1,
+              flexShrink: 0,
+              transformOrigin: 'center',
+              transition: animating ? 'none' : ('height ' + EASE),
+            }} />
+          ))}
+        </div>
+      );
+    }
+
+    // ── Voice Widget ──────────────────────────────────────────────────────────
+    function VoiceWidget({ stateKey, onKeyboardClick, onMicClick, onStopClick, onSend, typedText, onTextChange, userFocused, onInputFocus }) {
+      const cfg = STATES[stateKey];
+      const circleStyle = bg => ({
+        width: 48, height: 48, borderRadius: '50%', background: bg,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        flexShrink: 0, transition: 'background ' + EASE,
+      });
+
+      return (
+        <div style={{
+          background: '#1b1f23',
+          borderRadius: 999,
+          boxShadow: '0 2px 6px rgba(26, 22, 254, 0.22)',
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 12,
+          padding: '8px 28px',
+        }}>
+          {/* Mic circle */}
+          <div style={{ ...circleStyle(cfg.micBg), cursor: (cfg.textMode || stateKey === 'closed') ? 'pointer' : 'default' }}
+            onClick={cfg.textMode ? onMicClick : (stateKey === 'closed' ? onMicClick : null)}>
+            {cfg.textMode ? <MicMutedIcon /> : <MicIcon />}
+          </div>
+
+          {/* Waveform pill */}
+          {!cfg.textMode && (
+            <div style={{
+              position: 'relative',
+              width: Math.max(cfg.waveWidth, 0),
+              marginLeft: Math.min(cfg.waveWidth, 0),
+              height: 48,
+              borderRadius: 999,
+              background: cfg.waveBg,
+              flexShrink: 0,
+              overflow: 'hidden',
+              display: 'flex',
+              alignItems: 'center',
+              paddingLeft: 16,
+              paddingRight: 16,
+              transition: 'width ' + EASE + ', margin-left ' + EASE + ', background ' + EASE,
+            }}>
+              <div style={{ overflow: 'hidden', flex: 1, display: 'flex', justifyContent: 'center' }}>
+                <WaveformBars bars={cfg.bars} animating={cfg.animating} />
+              </div>
+              <div style={{
+                width: cfg.showStop ? 16 : 0,
+                marginLeft: cfg.showStop ? 8 : 0,
+                overflow: 'hidden',
+                opacity: cfg.showStop ? 1 : 0,
+                transition: 'width 0.3s ease, margin-left 0.3s ease, opacity 0.3s ease',
+                flexShrink: 0,
+                display: 'flex',
+                alignItems: 'center',
+                cursor: cfg.showStop ? 'pointer' : 'default',
+              }} onClick={cfg.showStop ? onStopClick : null}>
+                <StopIcon />
+              </div>
+            </div>
+          )}
+
+          {/* Keyboard / text input */}
+          <div
+            onClick={cfg.textMode ? null : onKeyboardClick}
+            style={{
+              position: 'relative',
+              width: cfg.textMode ? 210 : 48,
+              height: 48,
+              borderRadius: 999,
+              background: cfg.keyBg,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+              overflow: 'hidden',
+              cursor: 'pointer',
+              transition: 'width ' + EASE + ', background ' + EASE,
+            }}
+          >
+            <div style={{
+              position: 'absolute',
+              opacity: cfg.textMode ? 0 : 1,
+              transition: 'opacity 0.25s ease',
+              pointerEvents: 'none',
+            }}>
+              <KeyboardIcon />
+            </div>
+            <div style={{
+              position: 'absolute',
+              inset: 0,
+              display: 'flex',
+              alignItems: 'center',
+              padding: '4px 8px 4px 16px',
+              opacity: cfg.textMode ? 1 : 0,
+              transition: cfg.textMode ? 'opacity 0.2s ease 0.3s' : 'opacity 0.15s ease',
+              pointerEvents: cfg.textMode ? 'auto' : 'none',
+            }}>
+              <input
+                type="text"
+                value={typedText}
+                placeholder={userFocused ? 'Ask me anything' : ''}
+                onChange={e => onTextChange(e.target.value)}
+                onClick={e => e.stopPropagation()}
+                onFocus={e => { e.stopPropagation(); onInputFocus(); }}
+                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); onSend(); } }}
+                style={{
+                  flex: 1,
+                  color: userFocused ? '#EAEAEA' : '#999999',
+                  fontSize: 14,
+                  lineHeight: '21px',
+                  letterSpacing: 0,
+                  fontFamily: 'inherit',
+                  background: 'transparent',
+                  border: 'none',
+                  outline: 'none',
+                  cursor: 'text',
+                  minWidth: 0,
+                }}
+              />
+              <div onClick={onSend} style={{
+                width: 26, height: 26, borderRadius: '50%',
+                background: '#71b7fb',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                flexShrink: 0, marginLeft: 16, cursor: 'pointer',
+              }}>
+                <ArrowUpIcon />
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ── Chat message components ───────────────────────────────────────────────
+    const msgText = {
+      fontSize: 14, lineHeight: '21px', letterSpacing: 0,
+      fontFamily: "'SF Pro Text', -apple-system, sans-serif",
+      wordBreak: 'break-word',
+    };
+
+    function StreamingAiMessage({ text, onDone }) {
+      const [visibleWords, setVisibleWords] = useState(0);
+      const words = text.split(' ');
+      const intervalRef = useRef(null);
+
+      useEffect(() => {
+        // ~80ms per word feels natural for speaking pace
+        intervalRef.current = setInterval(() => {
+          setVisibleWords(prev => {
+            const next = prev + 1;
+            if (next >= words.length) {
+              clearInterval(intervalRef.current);
+              // Small pause before switching state back
+              setTimeout(onDone, 400);
+            }
+            return next;
+          });
+        }, 80);
+        return () => clearInterval(intervalRef.current);
+      }, []);
+
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', width: '100%' }}>
+          <div style={{ padding: '16px 12px', borderRadius: '12px 12px 12px 12px', width: '100%' }}>
+            <p style={{ ...msgText, color: 'rgba(255,255,255,0.9)', fontWeight: 400 }}>
+              {words.slice(0, visibleWords).join(' ')}
+              {visibleWords < words.length && (
+                <span style={{
+                  display: 'inline-block', width: 2, height: '1em',
+                  background: 'rgba(255,255,255,0.7)',
+                  marginLeft: 2, verticalAlign: 'text-bottom',
+                  animation: 'cursorBlink 0.7s step-end infinite',
+                }} />
+              )}
+            </p>
+          </div>
+        </div>
+      );
+    }
+
+    function AiMessage({ children, animate }) {
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', width: '100%', animation: animate ? 'slideUp 0.35s ease' : 'none' }}>
+          <div style={{ padding: '16px 12px', borderRadius: '12px 12px 12px 12px', width: '100%' }}>
+            <p style={{ ...msgText, color: 'rgba(255,255,255,0.9)', fontWeight: 400 }}>{children}</p>
+          </div>
+        </div>
+      );
+    }
+
+    function UserMessage({ children, animate }) {
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', paddingLeft: 24, width: '100%', animation: animate ? 'slideUp 0.35s ease' : 'none' }}>
+          <div style={{
+            padding: '16px 12px',
+            borderRadius: '12px 12px 0px 12px',
+            background: 'rgba(51,153,168,0.25)',
+            width: '100%',
+          }}>
+            <p style={{ ...msgText, color: '#EAECED', fontWeight: 400 }}>{children}</p>
+          </div>
+        </div>
+      );
+    }
+
+    function VoiceUserMessage({ children, animate }) {
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', paddingLeft: 24, width: '100%', animation: animate ? 'slideUp 0.35s ease' : 'none' }}>
+          <div style={{
+            padding: '16px 12px',
+            borderRadius: '12px 12px 0px 12px',
+            background: 'rgba(51,153,168,0.25)',
+            width: '100%',
+          }}>
+            <p style={{ ...msgText, color: '#EAECED', fontWeight: 400 }}>{children}</p>
+          </div>
+        </div>
+      );
+    }
+
+    function CountdownBubble({ count }) {
+      const display = String(count).padStart(2, '0');
+      return (
+        <div style={{ paddingLeft: 12, paddingTop: 4, animation: 'popIn 0.35s ease' }}>
+          <p style={{ ...msgText, color: '#71b7fb', fontWeight: 600, whiteSpace: 'nowrap' }}>
+            {count === 0 ? 'Starting…' : `Get started in ${display}`}
+          </p>
+        </div>
+      );
+    }
+
+    function ChallengeBox() {
+      const border = '1px solid rgba(140,140,140,0.25)';
+      return (
+        <div style={{ border, borderRadius: 4, width: '100%' }}>
+          {/* Header */}
+          <div style={{ padding: '16px 24px', borderBottom: border }}>
+            <p style={{ fontSize: 18, lineHeight: '22.5px', letterSpacing: 0, fontWeight: 600, color: 'rgba(255,255,255,0.9)' }}>
+              Challenge
+            </p>
+          </div>
+          {/* Body */}
+          <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <p style={{ fontSize: 16, lineHeight: '20px', letterSpacing: 0, fontWeight: 600, color: 'rgba(255,255,255,0.9)' }}>
+              Two Sums
+            </p>
+            <p style={{ ...msgText, color: 'rgba(255,255,255,0.6)', fontWeight: 400 }}>
+              Given an array of integers nums and an integer target, return indices of the two numbers such that they add up to target. You may assume that each input would have exactly one solution, and you may not use the same element twice.
+            </p>
+            <p style={{ ...msgText, color: 'rgba(255,255,255,0.6)', fontWeight: 400 }}>
+              Say{' '}
+              <span style={{ color: 'rgba(255,255,255,0.9)' }}>"I'm done"</span>
+              {' '}to begin the review.
+            </p>
+          </div>
+        </div>
+      );
+    }
+
+    const WELCOME_MSG = "Hi, welcome to your coding assessment. You'll see a code editor on the right — that's where you'll write your solution. Feel free to think out loud or ask me questions as you go. When you're done, hit Submit or just say \"all done.\" You have 20 minutes for the coding portion, followed by a quick 10-minute review of your work. Ready when you are.";
+
+    // Scripted voice responses from the candidate — simulates realistic speech durations
+    // Each entry: { text, speakDuration } where speakDuration is how long the waveform shows
+    const VOICE_RESPONSES = [
+      { text: "Can I use built-in functions or libraries?", speakDuration: 3200 },
+      { text: "Do I need to handle edge cases?", speakDuration: 2800 },
+      { text: "Ok so I'm looking at this and my first instinct is to use a brute force approach with two nested loops, giving me O(n²) time complexity — but I think a hash map would bring it down to O(n). Does that sound like the right direction?", speakDuration: 9500 },
+      { text: "So for the hash map approach, I'd iterate through the array once, storing each number and its index. For each element I check if the complement — target minus the current value — already exists in the map. If it does, I return both indices.", speakDuration: 10000 },
+      { text: "I think the space complexity would be O(n) in the worst case since I'm storing up to n elements in the hash map.", speakDuration: 6000 },
+      { text: "I'm not totally sure how to handle duplicates — like if the same value appears twice and both are needed.", speakDuration: 5500 },
+    ];
+    let voiceIndex = 0;
+
+    // Rotating AI responses for prototype chat engagement
+    const AI_REPLIES = [
+      "Yes, standard library functions are fine. No external libraries needed.",
+      "Handle what seems reasonable. If you're making assumptions, just say them out loud.",
+      "Sounds like the right direction. Think through how you'd actually use the hash map — walk me through it.",
+      "Good. And what happens if the complement isn't in the map yet when you hit a number?",
+      "Exactly right. O(n) space is the trade-off for O(n) time — that's the standard two-sum solution.",
+      "Good catch. If the same value appears twice, as long as they're at different indices, your hash map approach handles it naturally — you just check the complement before inserting the current element.",
+    ];
+    let replyIndex = 0;
+
+    // ── App ───────────────────────────────────────────────────────────────────
+    function App() {
+      const [stateKey, setStateKey] = useState('closed');
+      const [typedText, setTypedText] = useState('');
+      const [userFocused, setUserFocused] = useState(false);
+      const [extraMessages, setExtraMessages] = useState([]);
+      const [streamingText, setStreamingText] = useState(null);
+      const [prevStateKey, setPrevStateKey] = useState('closed');
+      const voiceTimerRef = useRef(null);
+      // Intro sequence state
+      const [introPhase, setIntroPhase] = useState('idle'); // idle | welcome | countdown | challenge
+      const [countdownVal, setCountdownVal] = useState(5);
+      const typeRef = useRef(null);
+      const typeStartRef = useRef(null);
+      const chatRef = useRef(null);
+      const countdownRef = useRef(null);
+      const PLACEHOLDER = 'Ask me anything';
+
+      const pick = k => {
+        setStateKey(k);
+      };
+
+      const handleMicClick = () => {
+        // Mic click while in closed/text: start voice recording simulation
+        if (introPhase !== 'challenge' || streamingText !== null) return;
+        const response = VOICE_RESPONSES[voiceIndex % VOICE_RESPONSES.length];
+        voiceIndex++;
+        setStateKey('person');
+        // After the speak duration, "transcribe" the voice message
+        voiceTimerRef.current = setTimeout(() => {
+          setStateKey('closed');
+          setTimeout(() => {
+            setExtraMessages(prev => [...prev, { type: 'voice', text: response.text }]);
+            setTimeout(() => {
+              if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight;
+            }, 50);
+            // AI "thinking" pause — scales with length of what the candidate said
+            const thinkPause = 1200 + Math.min(response.text.length * 8, 3000);
+            setTimeout(() => {
+              const reply = AI_REPLIES[replyIndex % AI_REPLIES.length];
+              replyIndex++;
+              setPrevStateKey('closed');
+              setStateKey('ai');
+              setStreamingText(reply);
+            }, thinkPause);
+          }, 400);
+        }, response.speakDuration);
+      };
+      const handleStopClick = () => {
+        if (streamingText !== null) {
+          handleStreamDone(streamingText);
+        } else if (stateKey === 'person') {
+          // Cancel voice — don't advance the index
+          clearTimeout(voiceTimerRef.current);
+          voiceIndex = Math.max(0, voiceIndex - 1);
+          setStateKey('closed');
+        } else {
+          pick('closed');
+        }
+      };
+      const handleKeyboardClick = () => {
+        if (streamingText !== null || introPhase !== 'challenge') return;
+        setStateKey(prev => prev === 'text' ? 'closed' : 'text');
+      };
+
+      useEffect(() => {
+        clearInterval(typeRef.current);
+        clearTimeout(typeStartRef.current);
+        setTypedText('');
+        if (stateKey === 'text') {
+          setUserFocused(false);
+          let i = 0;
+          typeStartRef.current = setTimeout(() => {
+            typeRef.current = setInterval(() => {
+              i++;
+              setTypedText(PLACEHOLDER.slice(0, i));
+              if (i >= PLACEHOLDER.length) clearInterval(typeRef.current);
+            }, 38);
+          }, 300);
+        }
+        return () => {
+          clearInterval(typeRef.current);
+          clearTimeout(typeStartRef.current);
+        };
+      }, [stateKey]);
+
+      // ── Intro sequence on mount ──────────────────────────────────────────────
+      useEffect(() => {
+        // 800ms delay then AI starts talking + streams welcome message
+        const t = setTimeout(() => {
+          setIntroPhase('welcome');
+          setStateKey('ai');
+        }, 800);
+        return () => clearTimeout(t);
+      }, []);
+
+      useEffect(() => {
+        if (introPhase === 'challenge') {
+          setTimeout(() => {
+            if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight;
+          }, 100);
+        }
+      }, [introPhase]);
+      useEffect(() => {
+        if (introPhase !== 'countdown') return;
+        setCountdownVal(5);
+        let val = 5;
+        countdownRef.current = setInterval(() => {
+          val--;
+          setCountdownVal(val);
+          if (val <= 0) {
+            clearInterval(countdownRef.current);
+            setTimeout(() => setIntroPhase('challenge'), 600);
+          }
+        }, 1000);
+        return () => clearInterval(countdownRef.current);
+      }, [introPhase]);
+
+      const handleWelcomeDone = () => {
+        setStateKey('closed');
+        setIntroPhase('countdown');
+        setTimeout(() => {
+          if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight;
+        }, 50);
+      };
+
+      const handleTextChange = val => {
+        clearInterval(typeRef.current);
+        clearTimeout(typeStartRef.current);
+        setTypedText(val);
+      };
+
+      const handleSend = () => {
+        const msg = typedText.trim();
+        if (!msg || streamingText !== null || introPhase !== 'challenge') return;
+        setExtraMessages(prev => [...prev, { type: 'user', text: msg }]);
+        setTypedText('');
+        setUserFocused(false);
+        setTimeout(() => {
+          if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight;
+        }, 50);
+        // AI "thinking" pause — scales with length of typed message
+        const thinkPause = 1500 + Math.min(msg.length * 10, 2500);
+        setTimeout(() => {
+          const reply = AI_REPLIES[replyIndex % AI_REPLIES.length];
+          replyIndex++;
+          setPrevStateKey(stateKey);
+          setStateKey('ai');
+          setStreamingText(reply);
+          setTimeout(() => {
+            if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight;
+          }, 50);
+        }, 600);
+      };
+
+      const handleStreamDone = (text) => {
+        // Commit streamed message as permanent, stop streaming
+        setExtraMessages(prev => [...prev, { type: 'ai', text }]);
+        setStreamingText(null);
+        setStateKey(prevStateKey);
+        setTimeout(() => {
+          if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight;
+        }, 50);
+      };
+
+      const handleInputFocus = () => {
+        clearInterval(typeRef.current);
+        clearTimeout(typeStartRef.current);
+        setUserFocused(true);
+        setTypedText('');
+      };
+
+      return (
+        <div style={{
+          minHeight: '100vh', width: '100%',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          {/* Card */}
+          <div style={{
+            width: 435, height: 620,
+            borderRadius: 8,
+            background: '#23272e',
+            overflow: 'hidden',
+            display: 'flex',
+            flexDirection: 'column',
+          }}>
+            {/* Header */}
+            <div style={{
+              padding: '16px 24px',
+              borderBottom: '1px solid rgba(140,140,140,0.25)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              flexShrink: 0,
+              background: '#23272e',
+            }}>
+              <SparkleIcon />
+              <span style={{
+                fontSize: 18, lineHeight: '22.5px', letterSpacing: 0,
+                fontWeight: 600, color: 'rgba(255,255,255,0.9)',
+                fontFamily: "'SF Pro Text', -apple-system, sans-serif",
+              }}>
+                AI Interviewer
+              </span>
+            </div>
+
+            {/* Chat + Widget area */}
+            <div style={{
+              flex: 1, display: 'flex', flexDirection: 'column',
+              justifyContent: 'space-between', position: 'relative',
+              overflow: 'hidden', paddingBottom: 24,
+            }}>
+              {/* Decorative background glow */}
+              <div style={{
+                position: 'absolute',
+                width: 480, height: 480,
+                borderRadius: '50%',
+                background: 'radial-gradient(circle, rgba(113,183,251,0.06) 0%, transparent 70%)',
+                left: '50%', top: '55%',
+                transform: 'translate(-50%, -50%)',
+                pointerEvents: 'none',
+              }} />
+
+              {/* Chat scroll area */}
+              <div
+                ref={chatRef}
+                className="chat-scroll"
+                style={{
+                  flex: 1, overflowY: 'auto',
+                  position: 'relative',
+                  maskImage: 'linear-gradient(to bottom, transparent 0%, black 48px)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'flex-end',
+                }}
+              >
+                <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
+                  {/* Intro: welcome message — streaming then committed */}
+                  {introPhase === 'welcome' && (
+                    <StreamingAiMessage
+                      key="intro-welcome"
+                      text={WELCOME_MSG}
+                      onDone={handleWelcomeDone}
+                    />
+                  )}
+                  {(introPhase === 'countdown' || introPhase === 'challenge') && (
+                    <AiMessage>{WELCOME_MSG}</AiMessage>
+                  )}
+                  {/* Countdown bubble */}
+                  {(introPhase === 'countdown' || introPhase === 'challenge') && (
+                    <CountdownBubble count={countdownVal} />
+                  )}
+                  {/* Challenge box fades in after countdown */}
+                  {introPhase === 'challenge' && (
+                    <div style={{ animation: 'slideUp 0.4s ease' }}>
+                      <ChallengeBox />
+                    </div>
+                  )}
+                  {/* Dynamic messages from user/AI chat */}
+                  {extraMessages.map((msg, i) => {
+                    const isLast = i === extraMessages.length - 1;
+                    if (msg.type === 'voice') return <VoiceUserMessage key={'extra-' + i} animate={isLast}>{msg.text}</VoiceUserMessage>;
+                    if (msg.type === 'user') return <UserMessage key={'extra-' + i} animate={isLast}>{msg.text}</UserMessage>;
+                    return <AiMessage key={'extra-' + i} animate={isLast}>{msg.text}</AiMessage>;
+                  })}
+                  {streamingText !== null && (
+                    <StreamingAiMessage
+                      key={'stream-' + streamingText}
+                      text={streamingText}
+                      onDone={() => handleStreamDone(streamingText)}
+                    />
+                  )}
+                </div>
+              </div>
+
+              {/* Widget pinned to bottom */}
+              <div style={{
+                display: 'flex', justifyContent: 'center',
+                paddingTop: 16, flexShrink: 0,
+              }}>
+                <VoiceWidget
+                  stateKey={stateKey}
+                  onKeyboardClick={handleKeyboardClick}
+                  onMicClick={handleMicClick}
+                  onStopClick={handleStopClick}
+                  onSend={handleSend}
+                  typedText={typedText}
+                  onTextChange={handleTextChange}
+                  userFocused={userFocused}
+                  onInputFocus={handleInputFocus}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* State controls outside card */}
+          <div className="controls-bar">
+            {STATE_KEYS.map(k => (
+              <button
+                key={k}
+                className={'ctrl-btn' + (stateKey === k ? ' active' : '')}
+                onClick={() => pick(k)}
+              >
+                {STATES[k].label}
+              </button>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>

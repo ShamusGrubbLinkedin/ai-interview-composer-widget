@@ -202,62 +202,21 @@
     );
 
     // Waveform bars
-    // When animating, drives bar heights via requestAnimationFrame using layered
-    // sine waves that mimic real speech: phrase envelope + syllable bursts + spatial propagation.
-    function WaveformBars({ bars, animating }) {
-      const [heights, setHeights] = useState(bars);
-      const rafRef = useRef(null);
-      const startRef = useRef(null);
-
-      useEffect(() => {
-        if (!animating) {
-          setHeights(bars);
-          return;
-        }
-        startRef.current = performance.now();
-        const tick = (now) => {
-          const t = (now - startRef.current) / 1000;
-
-          // Phrase envelope (~0.18Hz) — slow energy rise/fall like speaking in sentences
-          const phrase = 0.5 + 0.5 * Math.sin(2 * Math.PI * 0.18 * t);
-          // Syllable bursts (~2.8Hz) — typical speech syllable rate
-          const syllable = 0.5 + 0.5 * Math.sin(2 * Math.PI * 2.8 * t + 1.1);
-          // Micro variation (~7.3Hz) — formant-like fine detail
-          const micro = 0.5 + 0.5 * Math.sin(2 * Math.PI * 7.3 * t + 0.5);
-          // Combined envelope: phrase gates overall energy, syllable/micro add texture
-          const envelope = Math.pow(phrase, 0.5) * (0.35 + 0.45 * syllable + 0.2 * micro);
-
-          const n = bars.length;
-          const newHeights = bars.map((baseH, i) => {
-            if (baseH === 0) return 0;
-            const pos = i / n;
-            // Two waves propagating in opposite directions at different speeds —
-            // creates the organic left-right energy flow of a voice waveform
-            const wave1 = 0.5 + 0.5 * Math.sin(pos * Math.PI * 6 - 2 * Math.PI * 3.5 * t);
-            const wave2 = 0.5 + 0.5 * Math.sin(pos * Math.PI * 3 + 2 * Math.PI * 2.1 * t + 0.7);
-            const spatial = 0.4 * wave1 + 0.6 * wave2;
-            const h = baseH * 1.4 * envelope * (0.2 + 0.8 * spatial);
-            return Math.max(1.5, Math.min(h, 16));
-          });
-
-          setHeights(newHeights);
-          rafRef.current = requestAnimationFrame(tick);
-        };
-        rafRef.current = requestAnimationFrame(tick);
-        return () => cancelAnimationFrame(rafRef.current);
-      }, [animating]);
-
+    function WaveformBars({ bars, animating, isLive }) {
       return (
         <div style={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-          {heights.map((h, i) => (
+          {bars.map((h, i) => (
             <div key={i} style={{
-              width: 3,
-              height: Math.max(h * 1.2, 0),
+              width: 2,
+              height: Math.max(h, 0),
               background: 'white',
               borderRadius: 1,
               flexShrink: 0,
               transformOrigin: 'center',
-              transition: animating ? 'none' : ('height ' + EASE),
+              transition: isLive ? 'height 0.08s ease-out' : ('height ' + EASE),
+              animation: animating && h > 0
+                ? 'barPulse ' + BAR_ANIM[i].dur + ' ' + BAR_ANIM[i].dly + ' ease-in-out infinite'
+                : 'none',
             }} />
           ))}
         </div>
@@ -269,9 +228,8 @@
     // inline-flex pill hugs its content; as waveWidth transitions the pill grows with it.
     function VoiceWidget({ stateKey, onKeyboardClick, onMicClick, onStopClick, typedText, onTextChange, userFocused, onInputFocus }) {
       const cfg = STATES[stateKey];
-      const displayBars = liveBars || cfg.bars;
-      // suppress CSS animation when JS is driving bar heights live
-      const isLive = !!liveBars;
+      const displayBars = cfg.bars;
+      const isLive = false;
       const circleStyle = bg => ({
         width: 48, height: 48, borderRadius: '50%', background: bg,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -313,7 +271,7 @@
             transition: 'width ' + EASE + ', margin-left ' + EASE + ', background ' + EASE,
           }}>
             <div style={{ overflow: 'hidden', flex: 1, display: 'flex', justifyContent: 'center' }}>
-              <WaveformBars bars={cfg.bars} animating={cfg.animating} />
+              <WaveformBars bars={displayBars} animating={!isLive && cfg.animating} isLive={isLive} />
             </div>
             <div style={{
               width: cfg.showStop ? 16 : 0,
@@ -420,82 +378,14 @@
       const timerRef = useRef(null);
       const typeRef = useRef(null);
       const typeStartRef = useRef(null);
-      const streamRef = useRef(null);
-      const analyserRef = useRef(null);
-      const audioCtxRef = useRef(null);
-      const rafRef = useRef(null);
       const PLACEHOLDER = 'Ask me anything';
-
-      const stopMic = () => {
-        cancelAnimationFrame(rafRef.current);
-        if (streamRef.current) {
-          streamRef.current.getTracks().forEach(t => t.stop());
-          streamRef.current = null;
-        }
-        if (audioCtxRef.current) {
-          audioCtxRef.current.close();
-          audioCtxRef.current = null;
-        }
-        analyserRef.current = null;
-        setLiveBars(null);
-      };
-
-      const startMic = async () => {
-        try {
-          const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-          streamRef.current = stream;
-          const ctx = new AudioContext();
-          audioCtxRef.current = ctx;
-          const source = ctx.createMediaStreamSource(stream);
-          const analyser = ctx.createAnalyser();
-          analyser.fftSize = 256;
-          analyser.smoothingTimeConstant = 0.75;
-          source.connect(analyser);
-          analyserRef.current = analyser;
-          setAutoPlay(false);
-          setStateKey('person');
-
-          const NUM_BARS = FULL_BARS.length;
-          const tick = () => {
-            const time = new Uint8Array(analyser.fftSize);
-            analyser.getByteTimeDomainData(time);
-
-            // Compute RMS amplitude (0–1)
-            let sum = 0;
-            for (let s = 0; s < time.length; s++) {
-              const v = (time[s] - 128) / 128;
-              sum += v * v;
-            }
-            const rms = Math.sqrt(sum / time.length);
-
-            // Map each bar to its own waveform sample so bars vary individually
-            const bars = FULL_BARS.map((baseH, i) => {
-              const sampleIdx = Math.floor((i / NUM_BARS) * time.length);
-              // Deviation of this sample from centre (0–1)
-              const sampleAmp = Math.abs((time[sampleIdx] - 128) / 128);
-              // Blend RMS (global energy) with per-sample variation for natural look
-              const amp = rms * 0.6 + sampleAmp * 0.4;
-              // Scale up: quiet speech ~0.05 rms, loud ~0.3+
-              const scaled = Math.min(amp * 4.5, 1);
-              return Math.max(2, Math.round(scaled * 14));
-            });
-            setLiveBars(bars);
-            rafRef.current = requestAnimationFrame(tick);
-          };
-          rafRef.current = requestAnimationFrame(tick);
-        } catch (e) {
-          alert('Microphone access denied or unavailable.\n\nIf using Chrome, open via localhost instead of file://');
-        }
-      };
 
       const handleMicClick = () => {
         setAutoPlay(false);
         setStateKey('closed');
       };
 
-      // Clean up mic when switching away from person state via controls
       const pick = k => {
-        if (k !== 'person') stopMic();
         setAutoPlay(false);
         setStateKey(k);
       };
@@ -526,7 +416,7 @@
               setTypedText(PLACEHOLDER.slice(0, i));
               if (i >= PLACEHOLDER.length) clearInterval(typeRef.current);
             }, 38);
-          }, 300); // match the fade-in delay so no placeholder flash
+          }, 300);
         }
         return () => {
           clearInterval(typeRef.current);
@@ -545,6 +435,11 @@
         clearTimeout(typeStartRef.current);
         setUserFocused(true);
         setTypedText('');
+      };
+
+      const handleKeyboardClick = () => {
+        setAutoPlay(false);
+        setStateKey(prev => prev === 'text' ? 'closed' : 'text');
       };
 
       const handleStopClick = () => pick('closed');

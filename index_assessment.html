@@ -1,0 +1,1136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Interview Coding Assessment — Mintome</title>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      background: #0d1117;
+      min-height: 100vh;
+      font-family: 'SF Pro Text', 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      color: white;
+      overflow: hidden;
+    }
+
+    #root { min-height: 100vh; width: 100%; display: flex; align-items: center; justify-content: center; }
+
+    @keyframes barPulse {
+      0%, 100% { transform: scaleY(1); }
+      50%       { transform: scaleY(0.12); }
+    }
+
+    @keyframes typingDot {
+      0%, 100% { opacity: 0.3; transform: translateY(0); }
+      50%       { opacity: 1;   transform: translateY(-4px); }
+    }
+
+    @keyframes cursorBlink {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0; }
+    }
+
+    @keyframes fadeInUp {
+      from { opacity: 0; transform: translateY(10px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes slideUp {
+      from { opacity: 0; transform: translateY(16px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes popIn {
+      0%   { opacity: 0; transform: scale(0.92); }
+      60%  { transform: scale(1.03); }
+      100% { opacity: 1; transform: scale(1); }
+    }
+
+    @keyframes slideInRight {
+      from { opacity: 0; transform: translateX(40px); }
+      to   { opacity: 1; transform: translateX(0); }
+    }
+
+    @keyframes timerPulse {
+      0%, 100% { color: #fd93a3; }
+      50%       { color: rgba(253,147,163,0.5); }
+    }
+
+    /* scrollbar hidden but functional */
+    .chat-scroll::-webkit-scrollbar { display: none; }
+    .chat-scroll { scrollbar-width: none; }
+
+    input::placeholder { color: #999999; }
+
+    .code-area::-webkit-scrollbar { width: 8px; }
+    .code-area::-webkit-scrollbar-track { background: #1b1f23; }
+    .code-area::-webkit-scrollbar-thumb { background: rgba(108,115,124,0.6); border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+
+    const EASE = '0.5s cubic-bezier(0.4, 0, 0.2, 1)';
+
+    const FULL_BARS = [
+      8, 2, 4, 6, 4, 8, 6, 12, 4, 4, 8, 12, 8, 4, 8,
+      8, 2, 4, 6, 4, 8, 6, 12, 4, 4, 8, 12, 8, 4, 8, 10,
+    ];
+
+    const CLOSED_BARS = FULL_BARS.map((_, i) => {
+      if (i === 14) return 8;
+      if (i === 15) return 12;
+      if (i === 16) return 8;
+      return 0;
+    });
+
+    const BAR_ANIM = FULL_BARS.map((_, i) => ({
+      dur: (0.42 + (i * 13 % 9) * 0.09).toFixed(2) + 's',
+      dly: '-' + ((i * 7 % 17) * 0.035).toFixed(2) + 's',
+    }));
+
+    const STATES = {
+      closed: {
+        label: 'Closed', waveWidth: 48,
+        micBg: '#3d4045', waveBg: '#3d4045', keyBg: '#3d4045',
+        bars: CLOSED_BARS, animating: false, showStop: false, textMode: false,
+      },
+      ai: {
+        label: 'AI Talking', waveWidth: 132,
+        micBg: '#493d57', waveBg: '#523a51', keyBg: '#3d4045',
+        bars: FULL_BARS, animating: true, showStop: true, textMode: false,
+      },
+      person: {
+        label: 'Person Talking', waveWidth: 112,
+        micBg: '#004c33', waveBg: '#004c33', keyBg: '#3d4045',
+        bars: FULL_BARS, animating: true, showStop: false, textMode: false,
+      },
+      text: {
+        label: 'Text Input', waveWidth: 0,
+        micBg: '#3d4045', waveBg: '#3d4045', keyBg: '#2f2f2f',
+        bars: CLOSED_BARS, animating: false, showStop: false, textMode: true,
+      },
+    };
+
+    // ── Icons ─────────────────────────────────────────────────────────────────
+    const MicIcon = () => (
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ transform: 'scale(1.25)' }}>
+        <rect x="5" y="1" width="6" height="8.5" rx="3" fill="#9A9A9B" />
+        <path d="M3 7.5A5 5 0 0 0 13 7.5" stroke="#9A9A9B" strokeWidth="1.5" strokeLinecap="round" fill="none" />
+        <line x1="8" y1="12.5" x2="8" y2="15" stroke="#9A9A9B" strokeWidth="1.5" strokeLinecap="round" />
+        <line x1="5.5" y1="15" x2="10.5" y2="15" stroke="#9A9A9B" strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    );
+
+    const MicMutedIcon = () => (
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ transform: 'scale(1.25)' }}>
+        <rect x="5" y="1" width="6" height="8.5" rx="3" fill="#9A9A9B" />
+        <path d="M3 7.5A5 5 0 0 0 13 7.5" stroke="#9A9A9B" strokeWidth="1.5" strokeLinecap="round" fill="none" />
+        <line x1="8" y1="12.5" x2="8" y2="15" stroke="#9A9A9B" strokeWidth="1.5" strokeLinecap="round" />
+        <line x1="5.5" y1="15" x2="10.5" y2="15" stroke="#9A9A9B" strokeWidth="1.5" strokeLinecap="round" />
+        <line x1="2.5" y1="2.5" x2="13.5" y2="13.5" stroke="#9A9A9B" strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    );
+
+    const KeyboardIcon = () => (
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ transform: 'scale(1.5) translateY(1px)' }}>
+        <rect x="1" y="3.5" width="14" height="9" rx="1.5" stroke="white" strokeWidth="1.2" />
+        <rect x="3"   y="6" width="2" height="2"   rx="0.5" fill="white" />
+        <rect x="7"   y="6" width="2" height="2"   rx="0.5" fill="white" />
+        <rect x="11"  y="6" width="2" height="2"   rx="0.5" fill="white" />
+        <rect x="4.5" y="9" width="7" height="1.5" rx="0.5" fill="white" />
+      </svg>
+    );
+
+    const StopIcon = () => (
+      <div style={{ width: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+        <svg width="10" height="10" viewBox="0 0 10 10">
+          <rect width="10" height="10" rx="2" fill="rgba(255,255,255,0.9)" />
+        </svg>
+      </div>
+    );
+
+    const ArrowUpIcon = () => (
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+        <path d="M7 12V2" stroke="#0B1219" strokeWidth="2" strokeLinecap="round"/>
+        <path d="M3 6L7 2L11 6" stroke="#0B1219" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+      </svg>
+    );
+
+    const SparkleIcon = () => (
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+        <path d="M8 1l1.5 4.5L14 7l-4.5 1.5L8 13l-1.5-4.5L2 7l4.5-1.5Z" fill="#71B7FB" />
+      </svg>
+    );
+
+    const LinkedInIcon = () => (
+      <svg width="34" height="34" viewBox="0 0 34 34" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect width="34" height="34" rx="2.5" fill="white"/>
+        <path d="M34 2.5V31.5C34 32.163 33.7366 32.7989 33.2678 33.2678C32.7989 33.7366 32.163 34 31.5 34H2.5C1.83696 34 1.20107 33.7366 0.732231 33.2678C0.26339 32.7989 0 32.163 0 31.5V2.5C0 1.83696 0.26339 1.20107 0.732231 0.732233C1.20107 0.263392 1.83696 0 2.5 0L31.5 0C32.163 0 32.7989 0.263392 33.2678 0.732233C33.7366 1.20107 34 1.83696 34 2.5ZM10 13H5V29H10V13ZM10.45 7.5C10.4699 6.9028 10.311 6.31326 9.99374 5.80693C9.67643 5.30061 9.21516 4.90057 8.66904 4.6581C8.12291 4.41563 7.51682 4.34177 6.92844 4.44598C6.34007 4.55019 5.79622 4.82774 5.3666 5.24304C4.93698 5.65833 4.64117 6.19247 4.51707 6.77697C4.39298 7.36148 4.44626 7.96972 4.67009 8.52375C4.89392 9.07778 5.27809 9.55235 5.77337 9.88663C6.26865 10.2209 6.85246 10.3997 7.45 10.4C7.83987 10.4163 8.22899 10.3531 8.59372 10.2145C8.95845 10.0758 9.2912 9.8644 9.57175 9.59319C9.85231 9.32199 10.0748 8.99659 10.2258 8.63677C10.3768 8.27695 10.453 7.8902 10.45 7.5ZM29 19.28C29 14.47 25.94 12.6 22.9 12.6C21.9048 12.5512 20.9141 12.7636 20.0265 13.2162C19.1388 13.6688 18.385 14.3459 17.84 15.18H17.7V13H13V29H18V20.49C17.9631 20.0393 18.0186 19.5859 18.1632 19.1574C18.3078 18.729 18.5384 18.3346 18.8409 17.9985C19.1433 17.6623 19.5112 17.3915 19.922 17.2026C20.3329 17.0137 20.778 16.9107 21.23 16.9C22.82 16.9 24 17.9 24 20.42V29H29V19.28Z" fill="#0A66C2" fillRule="evenodd" clipRule="evenodd"/>
+      </svg>
+    );
+
+    const VideoIcon = () => (
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+        <rect x="1" y="4" width="9" height="8" rx="1.5" fill="#9A9A9B"/>
+        <path d="M11 6.5l4-2v7l-4-2V6.5Z" fill="#9A9A9B"/>
+      </svg>
+    );
+
+    const CameraIcon = () => (
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+        <path d="M2 5.5A1.5 1.5 0 0 1 3.5 4h1l1-1.5h5L11.5 4h1A1.5 1.5 0 0 1 14 5.5v6A1.5 1.5 0 0 1 12.5 13h-9A1.5 1.5 0 0 1 2 11.5v-6Z" stroke="#9A9A9B" strokeWidth="1.2" fill="none"/>
+        <circle cx="8" cy="8.5" r="2" stroke="#9A9A9B" strokeWidth="1.2" fill="none"/>
+      </svg>
+    );
+
+    const CaretIcon = () => (
+      <svg width="10" height="6" viewBox="0 0 10 6" fill="none">
+        <path d="M1 1l4 4 4-4" stroke="#e1e4e8" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+      </svg>
+    );
+
+    const ClockIcon = () => (
+      <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+        <circle cx="6" cy="6" r="5" stroke="#fd93a3" strokeWidth="1.2" fill="none"/>
+        <path d="M6 3.5V6l2 1.5" stroke="#fd93a3" strokeWidth="1.2" strokeLinecap="round"/>
+      </svg>
+    );
+
+    // ── Waveform bars ──────────────────────────────────────────────────────────
+    function WaveformBars({ bars, animating }) {
+      const [heights, setHeights] = useState(bars);
+      const rafRef = useRef(null);
+      const startRef = useRef(null);
+
+      useEffect(() => {
+        if (!animating) {
+          setHeights(bars);
+          return;
+        }
+        startRef.current = performance.now();
+        const tick = (now) => {
+          const t = (now - startRef.current) / 1000;
+          const phrase = 0.5 + 0.5 * Math.sin(2 * Math.PI * 0.18 * t);
+          const syllable = 0.5 + 0.5 * Math.sin(2 * Math.PI * 2.8 * t + 1.1);
+          const micro = 0.5 + 0.5 * Math.sin(2 * Math.PI * 7.3 * t + 0.5);
+          const envelope = Math.pow(phrase, 0.5) * (0.35 + 0.45 * syllable + 0.2 * micro);
+          const n = bars.length;
+          const newHeights = bars.map((baseH, i) => {
+            if (baseH === 0) return 0;
+            const pos = i / n;
+            const wave1 = 0.5 + 0.5 * Math.sin(pos * Math.PI * 6 - 2 * Math.PI * 3.5 * t);
+            const wave2 = 0.5 + 0.5 * Math.sin(pos * Math.PI * 3 + 2 * Math.PI * 2.1 * t + 0.7);
+            const spatial = 0.4 * wave1 + 0.6 * wave2;
+            const h = baseH * 1.4 * envelope * (0.2 + 0.8 * spatial);
+            return Math.max(1.5, Math.min(h, 16));
+          });
+          setHeights(newHeights);
+          rafRef.current = requestAnimationFrame(tick);
+        };
+        rafRef.current = requestAnimationFrame(tick);
+        return () => cancelAnimationFrame(rafRef.current);
+      }, [animating]);
+
+      return (
+        <div style={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+          {heights.map((h, i) => (
+            <div key={i} style={{
+              width: 3,
+              height: Math.max(h * 1.2, 0),
+              background: 'white',
+              borderRadius: 1,
+              flexShrink: 0,
+              transformOrigin: 'center',
+              transition: animating ? 'none' : ('height ' + EASE),
+            }} />
+          ))}
+        </div>
+      );
+    }
+
+    // ── Voice Widget ───────────────────────────────────────────────────────────
+    function VoiceWidget({ stateKey, onKeyboardClick, onMicClick, onStopClick, onSend, typedText, onTextChange, userFocused, onInputFocus }) {
+      const cfg = STATES[stateKey];
+      const circleStyle = bg => ({
+        width: 48, height: 48, borderRadius: '50%', background: bg,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        flexShrink: 0, transition: 'background ' + EASE,
+      });
+
+      return (
+        <div style={{
+          background: '#1b1f23',
+          borderRadius: 999,
+          boxShadow: '0 2px 6px rgba(26, 22, 254, 0.22)',
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 12,
+          padding: '8px 28px',
+        }}>
+          <div style={{ ...circleStyle(cfg.micBg), cursor: (cfg.textMode || stateKey === 'closed') ? 'pointer' : 'default' }}
+            onClick={cfg.textMode ? onMicClick : (stateKey === 'closed' ? onMicClick : null)}>
+            {cfg.textMode ? <MicMutedIcon /> : <MicIcon />}
+          </div>
+
+          {!cfg.textMode && (
+            <div style={{
+              position: 'relative',
+              width: Math.max(cfg.waveWidth, 0),
+              marginLeft: Math.min(cfg.waveWidth, 0),
+              height: 48,
+              borderRadius: 999,
+              background: cfg.waveBg,
+              flexShrink: 0,
+              overflow: 'hidden',
+              display: 'flex',
+              alignItems: 'center',
+              paddingLeft: 16,
+              paddingRight: 16,
+              transition: 'width ' + EASE + ', margin-left ' + EASE + ', background ' + EASE,
+            }}>
+              <div style={{ overflow: 'hidden', flex: 1, display: 'flex', justifyContent: 'center' }}>
+                <WaveformBars bars={cfg.bars} animating={cfg.animating} />
+              </div>
+              <div style={{
+                width: cfg.showStop ? 16 : 0,
+                marginLeft: cfg.showStop ? 8 : 0,
+                overflow: 'hidden',
+                opacity: cfg.showStop ? 1 : 0,
+                transition: 'width 0.3s ease, margin-left 0.3s ease, opacity 0.3s ease',
+                flexShrink: 0,
+                display: 'flex',
+                alignItems: 'center',
+                cursor: cfg.showStop ? 'pointer' : 'default',
+              }} onClick={cfg.showStop ? onStopClick : null}>
+                <StopIcon />
+              </div>
+            </div>
+          )}
+
+          <div
+            onClick={cfg.textMode ? null : onKeyboardClick}
+            style={{
+              position: 'relative',
+              width: cfg.textMode ? 210 : 48,
+              height: 48,
+              borderRadius: 999,
+              background: cfg.keyBg,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+              overflow: 'hidden',
+              cursor: 'pointer',
+              transition: 'width ' + EASE + ', background ' + EASE,
+            }}
+          >
+            <div style={{
+              position: 'absolute',
+              opacity: cfg.textMode ? 0 : 1,
+              transition: 'opacity 0.25s ease',
+              pointerEvents: 'none',
+            }}>
+              <KeyboardIcon />
+            </div>
+            <div style={{
+              position: 'absolute',
+              inset: 0,
+              display: 'flex',
+              alignItems: 'center',
+              padding: '4px 8px 4px 16px',
+              opacity: cfg.textMode ? 1 : 0,
+              transition: cfg.textMode ? 'opacity 0.2s ease 0.3s' : 'opacity 0.15s ease',
+              pointerEvents: cfg.textMode ? 'auto' : 'none',
+            }}>
+              <input
+                type="text"
+                value={typedText}
+                placeholder={userFocused ? 'Ask me anything' : ''}
+                onChange={e => onTextChange(e.target.value)}
+                onClick={e => e.stopPropagation()}
+                onFocus={e => { e.stopPropagation(); onInputFocus(); }}
+                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); onSend(); } }}
+                style={{
+                  flex: 1,
+                  color: userFocused ? '#EAEAEA' : '#999999',
+                  fontSize: 14,
+                  lineHeight: '21px',
+                  letterSpacing: 0,
+                  fontFamily: 'inherit',
+                  background: 'transparent',
+                  border: 'none',
+                  outline: 'none',
+                  cursor: 'text',
+                  minWidth: 0,
+                }}
+              />
+              <div onClick={onSend} style={{
+                width: 26, height: 26, borderRadius: '50%',
+                background: '#71b7fb',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                flexShrink: 0, marginLeft: 16, cursor: 'pointer',
+              }}>
+                <ArrowUpIcon />
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ── Chat message components ────────────────────────────────────────────────
+    const msgText = {
+      fontSize: 14, lineHeight: '21px', letterSpacing: 0,
+      fontFamily: "'SF Pro Text', -apple-system, sans-serif",
+      wordBreak: 'break-word',
+    };
+
+    function StreamingAiMessage({ text, onDone }) {
+      const [visibleWords, setVisibleWords] = useState(0);
+      const words = text.split(' ');
+      const intervalRef = useRef(null);
+
+      useEffect(() => {
+        intervalRef.current = setInterval(() => {
+          setVisibleWords(prev => {
+            const next = prev + 1;
+            if (next >= words.length) {
+              clearInterval(intervalRef.current);
+              setTimeout(onDone, 400);
+            }
+            return next;
+          });
+        }, 80);
+        return () => clearInterval(intervalRef.current);
+      }, []);
+
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', width: '100%' }}>
+          <div style={{ padding: '16px 12px', borderRadius: '12px 12px 12px 12px', width: '100%' }}>
+            <p style={{ ...msgText, color: 'rgba(255,255,255,0.9)', fontWeight: 400 }}>
+              {words.slice(0, visibleWords).join(' ')}
+              {visibleWords < words.length && (
+                <span style={{
+                  display: 'inline-block', width: 2, height: '1em',
+                  background: 'rgba(255,255,255,0.7)',
+                  marginLeft: 2, verticalAlign: 'text-bottom',
+                  animation: 'cursorBlink 0.7s step-end infinite',
+                }} />
+              )}
+            </p>
+          </div>
+        </div>
+      );
+    }
+
+    function AiMessage({ children, animate }) {
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', width: '100%', animation: animate ? 'slideUp 0.35s ease' : 'none' }}>
+          <div style={{ padding: '16px 12px', borderRadius: '12px 12px 12px 12px', width: '100%' }}>
+            <p style={{ ...msgText, color: 'rgba(255,255,255,0.9)', fontWeight: 400 }}>{children}</p>
+          </div>
+        </div>
+      );
+    }
+
+    function UserMessage({ children, animate }) {
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', paddingLeft: 24, width: '100%', animation: animate ? 'slideUp 0.35s ease' : 'none' }}>
+          <div style={{
+            padding: '16px 12px',
+            borderRadius: '12px 12px 0px 12px',
+            background: 'rgba(51,153,168,0.25)',
+            width: '100%',
+          }}>
+            <p style={{ ...msgText, color: '#EAECED', fontWeight: 400 }}>{children}</p>
+          </div>
+        </div>
+      );
+    }
+
+    function VoiceUserMessage({ children, animate }) {
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', paddingLeft: 24, width: '100%', animation: animate ? 'slideUp 0.35s ease' : 'none' }}>
+          <div style={{
+            padding: '16px 12px',
+            borderRadius: '12px 12px 0px 12px',
+            background: 'rgba(51,153,168,0.25)',
+            width: '100%',
+          }}>
+            <p style={{ ...msgText, color: '#EAECED', fontWeight: 400 }}>{children}</p>
+          </div>
+        </div>
+      );
+    }
+
+    function CountdownBubble({ count }) {
+      const display = String(count).padStart(2, '0');
+      return (
+        <div style={{ paddingLeft: 12, paddingTop: 4, animation: 'popIn 0.35s ease' }}>
+          <p style={{ ...msgText, color: '#71b7fb', fontWeight: 600, whiteSpace: 'nowrap' }}>
+            {count === 0 ? 'Starting…' : `Get started in ${display}`}
+          </p>
+        </div>
+      );
+    }
+
+    function ChallengeBox() {
+      const border = '1px solid rgba(140,140,140,0.25)';
+      return (
+        <div style={{ border, borderRadius: 4, width: '100%' }}>
+          <div style={{ padding: '16px 24px', borderBottom: border }}>
+            <p style={{ fontSize: 16, lineHeight: '20px', letterSpacing: 0, fontWeight: 600, color: 'rgba(255,255,255,0.9)' }}>
+              Challenge
+            </p>
+          </div>
+          <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <p style={{ fontSize: 14, lineHeight: '21px', letterSpacing: 0, fontWeight: 600, color: 'rgba(255,255,255,0.9)' }}>
+              Two Sums
+            </p>
+            <p style={{ ...msgText, color: 'rgba(255,255,255,0.6)', fontWeight: 400 }}>
+              Given an array of integers <code style={{ color: '#f4af77', fontFamily: 'Menlo, monospace', fontSize: 13 }}>nums</code> and an integer <code style={{ color: '#f4af77', fontFamily: 'Menlo, monospace', fontSize: 13 }}>target</code>, return indices of the two numbers such that they add up to target. You may assume that each input would have exactly one solution, and you may not use the same element twice.
+            </p>
+            <p style={{ ...msgText, color: 'rgba(255,255,255,0.6)', fontWeight: 400 }}>
+              Say{' '}
+              <span style={{ color: 'rgba(255,255,255,0.9)' }}>"I'm done"</span>
+              {' '}to begin the review.
+            </p>
+          </div>
+        </div>
+      );
+    }
+
+    // ── Code Editor Panel ──────────────────────────────────────────────────────
+    function CodeEditorPanel({ timerSeconds, challengeStarted }) {
+      const mins = String(Math.floor(timerSeconds / 60)).padStart(2, '0');
+      const secs = String(timerSeconds % 60).padStart(2, '0');
+      const timerStr = `${mins}:${secs}`;
+      const timerLow = timerSeconds < 120;
+
+      // 35 line numbers always visible — code content fades in on challenge start
+      const TOTAL_LINES = 35;
+      const CODE_LINES = [
+        { num: 1,  tokens: [{ t: 'Two Sums', c: '#A4A5A7' }] },
+        { num: 2,  tokens: [{ t: 'Given an array of integers nums and an integer target, return indices of the two numbers such that they add up to target. You may assume that each input would have exactly one solution, and you may not use the same element twice.', c: '#A4A5A7' }] },
+        { num: 3,  tokens: [] },
+        { num: 4,  tokens: [{ t: 'Say "I\'m done" to begin the review.', c: '#A4A5A7' }] },
+        { num: 5,  tokens: [] },
+        { num: 6,  tokens: [{ t: 'function', c: '#ad97ec' }, { t: ' ', c: '' }, { t: 'twoSum', c: '#85b8fb' }, { t: '(', c: '#e1e4e8' }, { t: 'nums', c: '#f4af77' }, { t: ', ', c: '#e1e4e8' }, { t: 'target', c: '#f4af77' }, { t: ') ', c: '#e1e4e8' }, { t: '{', c: '#a6cbfc' }] },
+        { num: 7,  tokens: [{ t: '  ', c: '' }, { t: '// Write your solution here', c: '#6c737c' }] },
+        { num: 8,  tokens: [] },
+        { num: 9,  tokens: [{ t: '}', c: '#a6cbfc' }] },
+        { num: 10, tokens: [] },
+      ];
+
+      const border = '1px solid rgba(140,140,140,0.25)';
+      const monoFont = { fontFamily: "'Menlo', 'Monaco', 'Courier New', monospace", fontSize: 12, lineHeight: '18px' };
+
+      return (
+        <div style={{
+          flex: 1,
+          height: '100%',
+          borderRadius: 8,
+          border,
+          background: '#1b1f23',
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+        }}>
+          {/* Header — always shown */}
+          <div style={{
+            padding: '12px 16px',
+            borderBottom: '1px solid #373A3D',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexShrink: 0,
+            background: '#1b1f23',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+              <span style={{
+                fontSize: 14, lineHeight: '20px', fontWeight: 600,
+                color: 'rgba(255,255,255,0.9)',
+                fontFamily: "'SF Pro Text', -apple-system, sans-serif",
+              }}>
+                Your Answer
+              </span>
+              <div style={{ width: 1, height: 16, background: '#373A3D', flexShrink: 0 }} />
+              <div style={{
+                background: 'transparent',
+                borderRadius: 4,
+                padding: '2px 8px', display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer',
+              }}>
+                <span style={{ ...monoFont, color: '#e1e4e8', fontSize: 12 }}>JavaScript</span>
+                <CaretIcon />
+              </div>
+            </div>
+            {/* Timer — always shown, only counts when challenge is active */}
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              background: '#070809', borderRadius: 24,
+              padding: '4px 12px',
+            }}>
+              <ClockIcon />
+              <span style={{
+                ...monoFont, fontSize: 13, fontWeight: 600,
+                color: '#fd93a3',
+                animation: (challengeStarted && timerLow) ? 'timerPulse 1s ease-in-out infinite' : 'none',
+                fontFamily: "'Menlo', monospace",
+              }}>
+                {timerStr}
+              </span>
+            </div>
+          </div>
+
+          {/* Code body — each line is a flex row so line number stays aligned with wrapped content */}
+          <div className="code-area" style={{
+            flex: 1, background: '#1b1f23', overflowY: 'auto', overflowX: 'hidden',
+            padding: '8px 0',
+          }}>
+            {Array.from({ length: TOTAL_LINES }, (_, i) => {
+              const lineNum = i + 1;
+              const line = CODE_LINES.find(l => l.num === lineNum);
+              const hasContent = line && line.tokens.length > 0;
+              return (
+                <div key={lineNum} style={{ display: 'flex', alignItems: 'flex-start', minHeight: 18 }}>
+                  {/* Line number — always visible */}
+                  <div style={{
+                    ...monoFont, color: '#6c737c', textAlign: 'right',
+                    paddingRight: 16, paddingLeft: 16,
+                    userSelect: 'none', flexShrink: 0, minWidth: 40,
+                    lineHeight: '18px',
+                  }}>
+                    {lineNum}
+                  </div>
+                  {/* Line content — fades in when challenge starts */}
+                  <div style={{
+                    flex: 1, ...monoFont, paddingRight: 8,
+                    lineHeight: '18px', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                    opacity: challengeStarted ? 1 : 0,
+                    transition: 'opacity 0.5s ease',
+                  }}>
+                    {hasContent
+                      ? line.tokens.map((tok, ti) =>
+                          tok.c === '' ? tok.t : <span key={ti} style={{ color: tok.c }}>{tok.t}</span>
+                        )
+                      : '\u00A0'
+                    }
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      );
+    }
+
+    // ── Nav Bar ────────────────────────────────────────────────────────────────
+    function NavBar() {
+      return (
+        <div style={{
+          height: 52,
+          background: 'white',
+          borderBottom: '1px solid rgba(0,0,0,0.1)',
+          display: 'flex',
+          alignItems: 'center',
+          paddingLeft: 32,
+          paddingRight: 32,
+          flexShrink: 0,
+          position: 'relative',
+        }}>
+          <LinkedInIcon />
+          <span style={{
+            position: 'absolute',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            fontSize: 14,
+            lineHeight: '20px',
+            fontWeight: 600,
+            color: '#1A1A1A',
+            fontFamily: "'SF Pro Text', -apple-system, sans-serif",
+            whiteSpace: 'nowrap',
+          }}>
+            AI Interview Coding Assessment: Mintome
+          </span>
+        </div>
+      );
+    }
+
+    // ── Bottom Bar ─────────────────────────────────────────────────────────────
+    function BottomBar({ onFinish }) {
+      return (
+        <div style={{
+          background: '#1b1f23',
+          display: 'flex',
+          alignItems: 'center',
+          padding: '16px 32px',
+          flexShrink: 0,
+        }}>
+          {/* Left: Video + recording controls */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1 }}>
+            {/* Video thumbnail */}
+            <div style={{
+              width: 128, height: 72,
+              borderRadius: 4,
+              flexShrink: 0,
+              overflow: 'hidden',
+            }}>
+              <img src="images/video.png" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+            </div>
+            {/* Recording indicator + controls — stacked, centered in bar */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, justifyContent: 'center', alignSelf: 'center' }}>
+              <div style={{
+                background: 'rgba(0,0,0,0.9)',
+                borderRadius: 24,
+                padding: '0 10px',
+                height: 32,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+              }}>
+                <div style={{
+                  width: 8, height: 8, borderRadius: '50%',
+                  background: '#fd93a3',
+                  flexShrink: 0,
+                  animation: 'timerPulse 1.4s ease-in-out infinite',
+                }} />
+                <span style={{
+                  fontSize: 14, fontWeight: 500, color: 'rgba(255,255,255,0.6)',
+                  fontFamily: "'SF Pro Text', -apple-system, sans-serif",
+                  lineHeight: '17.5px',
+                  whiteSpace: 'nowrap',
+                }}>
+                  Recording
+                </span>
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <div style={{
+                  height: 32, borderRadius: 24,
+                  background: 'rgba(0,0,0,0.75)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  padding: '0 16px',
+                  cursor: 'pointer',
+                }}>
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M3 3H11V13H3C1.9 13 1 12.1 1 11V5C1 3.9 1.9 3 3 3ZM13.5 4L12 4.75V11.25L13.5 12H15V4H13.5Z" fill="#9A9A9B"/>
+                  </svg>
+                </div>
+                <div style={{
+                  height: 32, borderRadius: 24,
+                  background: 'rgba(0,0,0,0.75)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  padding: '0 16px',
+                  cursor: 'pointer',
+                }}>
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M6.03 1L3.02 2.76L3.95 5.2L3.59 5.83L1 6.22V9.74L3.55 10.13L3.93 10.78L3 13.22L6 14.98L7.6 12.95H8.36L9.97 15L12.99 13.24L12.05 10.82L12.42 10.17L15 9.78V6.26L12.42 5.87L12.06 5.24L13.02 2.78L10 1.02L8.37 3.08H7.66L6.03 1ZM8 6C9.1 6 10 6.9 10 8C10 9.1 9.1 10 8 10C6.9 10 6 9.1 6 8C6 6.9 6.9 6 8 6Z" fill="#9A9A9B"/>
+                  </svg>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Center: Disclaimer */}
+          <div style={{ flex: 1, display: 'flex', justifyContent: 'center' }}>
+            <span style={{
+              fontSize: 14, lineHeight: '21px', color: 'rgba(255,255,255,0.9)',
+              fontFamily: "'SF Pro Text', -apple-system, sans-serif",
+              textAlign: 'center',
+              whiteSpace: 'nowrap',
+            }}>
+              This is an early-stage AI-powered feature.
+            </span>
+          </div>
+
+          {/* Right: Submit button */}
+          <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-end' }}>
+            <button
+              onClick={onFinish}
+              style={{
+                background: '#71b7fb',
+                border: 'none',
+                borderRadius: 24,
+                padding: '12px 20px',
+                fontSize: 16,
+                fontWeight: 600,
+                color: '#0B1219',
+                cursor: 'pointer',
+                fontFamily: "'SF Pro Text', -apple-system, sans-serif",
+                lineHeight: '20px',
+                transition: 'background 0.15s ease',
+              }}
+            >
+              Finished Coding
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    // ── Data ───────────────────────────────────────────────────────────────────
+    const WELCOME_MSG = "Hi, welcome to your coding assessment. You'll see a code editor on the right — that's where you'll write your solution. Feel free to think out loud or ask me questions as you go. When you're done, hit Submit or just say \"all done.\" You have 20 minutes for the coding portion, followed by a quick 10-minute review of your work. Ready when you are.";
+
+    const VOICE_RESPONSES = [
+      { text: "Can I use built-in functions or libraries?", speakDuration: 3200 },
+      { text: "Do I need to handle edge cases?", speakDuration: 2800 },
+      { text: "Ok so I'm looking at this and my first instinct is to use a brute force approach with two nested loops, giving me O(n²) time complexity — but I think a hash map would bring it down to O(n). Does that sound like the right direction?", speakDuration: 9500 },
+      { text: "So for the hash map approach, I'd iterate through the array once, storing each number and its index. For each element I check if the complement — target minus the current value — already exists in the map. If it does, I return both indices.", speakDuration: 10000 },
+      { text: "I think the space complexity would be O(n) in the worst case since I'm storing up to n elements in the hash map.", speakDuration: 6000 },
+      { text: "I'm not totally sure how to handle duplicates — like if the same value appears twice and both are needed.", speakDuration: 5500 },
+    ];
+    let voiceIndex = 0;
+
+    const AI_REPLIES = [
+      "Yes, standard library functions are fine. No external libraries needed.",
+      "Handle what seems reasonable. If you're making assumptions, just say them out loud.",
+      "Sounds like the right direction. Think through how you'd actually use the hash map — walk me through it.",
+      "Good. And what happens if the complement isn't in the map yet when you hit a number?",
+      "Exactly right. O(n) space is the trade-off for O(n) time — that's the standard two-sum solution.",
+      "Good catch. If the same value appears twice, as long as they're at different indices, your hash map approach handles it naturally — you just check the complement before inserting the current element.",
+    ];
+    let replyIndex = 0;
+
+    const TOTAL_TIMER = 20 * 60; // 20 minutes in seconds
+
+    // ── App ────────────────────────────────────────────────────────────────────
+    function App() {
+      const [stateKey, setStateKey] = useState('closed');
+      const [typedText, setTypedText] = useState('');
+      const [userFocused, setUserFocused] = useState(false);
+      const [extraMessages, setExtraMessages] = useState([]);
+      const [streamingText, setStreamingText] = useState(null);
+      const [prevStateKey, setPrevStateKey] = useState('closed');
+      const voiceTimerRef = useRef(null);
+      const [introPhase, setIntroPhase] = useState('idle');
+      const [countdownVal, setCountdownVal] = useState(5);
+      const [timerSeconds, setTimerSeconds] = useState(TOTAL_TIMER);
+      const typeRef = useRef(null);
+      const typeStartRef = useRef(null);
+      const chatRef = useRef(null);
+      const countdownRef = useRef(null);
+      const timerRef = useRef(null);
+      const PLACEHOLDER = 'Ask me anything';
+
+      const handleMicClick = () => {
+        if (introPhase !== 'challenge' || streamingText !== null) return;
+        const response = VOICE_RESPONSES[voiceIndex % VOICE_RESPONSES.length];
+        voiceIndex++;
+        setStateKey('person');
+        voiceTimerRef.current = setTimeout(() => {
+          setStateKey('closed');
+          setTimeout(() => {
+            setExtraMessages(prev => [...prev, { type: 'voice', text: response.text }]);
+            setTimeout(() => {
+              if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight;
+            }, 50);
+            const thinkPause = 1200 + Math.min(response.text.length * 8, 3000);
+            setTimeout(() => {
+              const reply = AI_REPLIES[replyIndex % AI_REPLIES.length];
+              replyIndex++;
+              setPrevStateKey('closed');
+              setStateKey('ai');
+              setStreamingText(reply);
+            }, thinkPause);
+          }, 400);
+        }, response.speakDuration);
+      };
+
+      const handleStopClick = () => {
+        if (streamingText !== null) {
+          handleStreamDone(streamingText);
+        } else if (stateKey === 'person') {
+          clearTimeout(voiceTimerRef.current);
+          voiceIndex = Math.max(0, voiceIndex - 1);
+          setStateKey('closed');
+        } else {
+          setStateKey('closed');
+        }
+      };
+
+      const handleKeyboardClick = () => {
+        if (streamingText !== null || introPhase !== 'challenge') return;
+        setStateKey(prev => prev === 'text' ? 'closed' : 'text');
+      };
+
+      useEffect(() => {
+        clearInterval(typeRef.current);
+        clearTimeout(typeStartRef.current);
+        setTypedText('');
+        if (stateKey === 'text') {
+          setUserFocused(false);
+          let i = 0;
+          typeStartRef.current = setTimeout(() => {
+            typeRef.current = setInterval(() => {
+              i++;
+              setTypedText(PLACEHOLDER.slice(0, i));
+              if (i >= PLACEHOLDER.length) clearInterval(typeRef.current);
+            }, 38);
+          }, 300);
+        }
+        return () => {
+          clearInterval(typeRef.current);
+          clearTimeout(typeStartRef.current);
+        };
+      }, [stateKey]);
+
+      // Start intro on mount
+      useEffect(() => {
+        const t = setTimeout(() => {
+          setIntroPhase('welcome');
+          setStateKey('ai');
+        }, 800);
+        return () => clearTimeout(t);
+      }, []);
+
+      // Scroll to bottom when challenge loads
+      useEffect(() => {
+        if (introPhase === 'challenge') {
+          setTimeout(() => {
+            if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight;
+          }, 100);
+          // Start the 20-minute timer
+          timerRef.current = setInterval(() => {
+            setTimerSeconds(prev => {
+              if (prev <= 0) {
+                clearInterval(timerRef.current);
+                return 0;
+              }
+              return prev - 1;
+            });
+          }, 1000);
+        }
+        return () => clearInterval(timerRef.current);
+      }, [introPhase]);
+
+      // Countdown ticks
+      useEffect(() => {
+        if (introPhase !== 'countdown') return;
+        setCountdownVal(5);
+        let val = 5;
+        countdownRef.current = setInterval(() => {
+          val--;
+          setCountdownVal(val);
+          if (val <= 0) {
+            clearInterval(countdownRef.current);
+            setTimeout(() => setIntroPhase('challenge'), 600);
+          }
+        }, 1000);
+        return () => clearInterval(countdownRef.current);
+      }, [introPhase]);
+
+      const handleWelcomeDone = () => {
+        setStateKey('closed');
+        setIntroPhase('countdown');
+        setTimeout(() => {
+          if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight;
+        }, 50);
+      };
+
+      const handleTextChange = val => {
+        clearInterval(typeRef.current);
+        clearTimeout(typeStartRef.current);
+        setTypedText(val);
+      };
+
+      const handleSend = () => {
+        const msg = typedText.trim();
+        if (!msg || streamingText !== null || introPhase !== 'challenge') return;
+        setExtraMessages(prev => [...prev, { type: 'user', text: msg }]);
+        setTypedText('');
+        setUserFocused(false);
+        setTimeout(() => {
+          if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight;
+        }, 50);
+        const thinkPause = 1500 + Math.min(msg.length * 10, 2500);
+        setTimeout(() => {
+          const reply = AI_REPLIES[replyIndex % AI_REPLIES.length];
+          replyIndex++;
+          setPrevStateKey(stateKey);
+          setStateKey('ai');
+          setStreamingText(reply);
+          setTimeout(() => {
+            if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight;
+          }, 50);
+        }, 600);
+      };
+
+      const handleStreamDone = (text) => {
+        setExtraMessages(prev => [...prev, { type: 'ai', text }]);
+        setStreamingText(null);
+        setStateKey(prevStateKey);
+        setTimeout(() => {
+          if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight;
+        }, 50);
+      };
+
+      const handleInputFocus = () => {
+        clearInterval(typeRef.current);
+        clearTimeout(typeStartRef.current);
+        setUserFocused(true);
+        setTypedText('');
+      };
+
+      return (
+        <div style={{
+          width: 1440,
+          height: 800,
+          background: '#1b1f23',
+          display: 'flex',
+          flexDirection: 'column',
+          borderRadius: 8,
+          overflow: 'hidden',
+          boxShadow: '0 8px 40px rgba(0,0,0,0.6)',
+        }}>
+          {/* Top nav */}
+          <NavBar />
+
+          {/* Main content */}
+          <div style={{
+            flex: 1,
+            display: 'flex',
+            alignItems: 'stretch',
+            justifyContent: 'flex-start',
+            padding: '16px 24px 0',
+            gap: 24,
+            overflow: 'hidden',
+          }}>
+            {/* Chat panel */}
+            <div style={{
+              width: 435,
+              height: '100%',
+              borderRadius: 8,
+              background: '#23272e',
+              overflow: 'hidden',
+              display: 'flex',
+              flexDirection: 'column',
+              flexShrink: 0,
+            }}>
+              {/* Chat header */}
+              <div style={{
+                padding: '16px 24px',
+                borderBottom: '1px solid rgba(140,140,140,0.25)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                flexShrink: 0,
+                background: '#23272e',
+              }}>
+                <SparkleIcon />
+                <span style={{
+                  fontSize: 16, lineHeight: '20px', letterSpacing: 0,
+                  fontWeight: 600, color: 'rgba(255,255,255,0.9)',
+                  fontFamily: "'SF Pro Text', -apple-system, sans-serif",
+                }}>
+                  AI Interviewer
+                </span>
+              </div>
+
+              {/* Chat + Widget area */}
+              <div style={{
+                flex: 1, display: 'flex', flexDirection: 'column',
+                justifyContent: 'space-between', position: 'relative',
+                overflow: 'hidden', paddingBottom: 24,
+              }}>
+                {/* Decorative glow */}
+                <div style={{
+                  position: 'absolute',
+                  width: 480, height: 480,
+                  borderRadius: '50%',
+                  background: 'radial-gradient(circle, rgba(113,183,251,0.06) 0%, transparent 70%)',
+                  left: '50%', top: '55%',
+                  transform: 'translate(-50%, -50%)',
+                  pointerEvents: 'none',
+                }} />
+
+                {/* Chat scroll */}
+                <div
+                  ref={chatRef}
+                  className="chat-scroll"
+                  style={{
+                    flex: 1, overflowY: 'auto',
+                    position: 'relative',
+                    maskImage: 'linear-gradient(to bottom, transparent 0%, black 48px)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'flex-end',
+                  }}
+                >
+                  <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
+                    {introPhase === 'welcome' && (
+                      <StreamingAiMessage
+                        key="intro-welcome"
+                        text={WELCOME_MSG}
+                        onDone={handleWelcomeDone}
+                      />
+                    )}
+                    {(introPhase === 'countdown' || introPhase === 'challenge') && (
+                      <AiMessage>{WELCOME_MSG}</AiMessage>
+                    )}
+                    {(introPhase === 'countdown' || introPhase === 'challenge') && (
+                      <CountdownBubble count={countdownVal} />
+                    )}
+                    {introPhase === 'challenge' && (
+                      <div style={{ animation: 'slideUp 0.4s ease' }}>
+                        <ChallengeBox />
+                      </div>
+                    )}
+                    {extraMessages.map((msg, i) => {
+                      const isLast = i === extraMessages.length - 1;
+                      if (msg.type === 'voice') return <VoiceUserMessage key={'extra-' + i} animate={isLast}>{msg.text}</VoiceUserMessage>;
+                      if (msg.type === 'user') return <UserMessage key={'extra-' + i} animate={isLast}>{msg.text}</UserMessage>;
+                      return <AiMessage key={'extra-' + i} animate={isLast}>{msg.text}</AiMessage>;
+                    })}
+                    {streamingText !== null && (
+                      <StreamingAiMessage
+                        key={'stream-' + streamingText}
+                        text={streamingText}
+                        onDone={() => handleStreamDone(streamingText)}
+                      />
+                    )}
+                  </div>
+                </div>
+
+                {/* Widget */}
+                <div style={{
+                  display: 'flex', justifyContent: 'center',
+                  paddingTop: 16, flexShrink: 0,
+                }}>
+                  <VoiceWidget
+                    stateKey={stateKey}
+                    onKeyboardClick={handleKeyboardClick}
+                    onMicClick={handleMicClick}
+                    onStopClick={handleStopClick}
+                    onSend={handleSend}
+                    typedText={typedText}
+                    onTextChange={handleTextChange}
+                    userFocused={userFocused}
+                    onInputFocus={handleInputFocus}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Code editor — always visible, content gated on challenge start */}
+            <CodeEditorPanel timerSeconds={timerSeconds} challengeStarted={introPhase === 'challenge'} />
+          </div>
+
+          {/* Bottom bar */}
+          <BottomBar onFinish={() => {}} />
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>

@@ -202,54 +202,10 @@
     );
 
     // Waveform bars
-    // When animating, drives bar heights via requestAnimationFrame using layered
-    // sine waves that mimic real speech: phrase envelope + syllable bursts + spatial propagation.
     function WaveformBars({ bars, animating }) {
-      const [heights, setHeights] = useState(bars);
-      const rafRef = useRef(null);
-      const startRef = useRef(null);
-
-      useEffect(() => {
-        if (!animating) {
-          setHeights(bars);
-          return;
-        }
-        startRef.current = performance.now();
-        const tick = (now) => {
-          const t = (now - startRef.current) / 1000;
-
-          // Phrase envelope (~0.18Hz) — slow energy rise/fall like speaking in sentences
-          const phrase = 0.5 + 0.5 * Math.sin(2 * Math.PI * 0.18 * t);
-          // Syllable bursts (~2.8Hz) — typical speech syllable rate
-          const syllable = 0.5 + 0.5 * Math.sin(2 * Math.PI * 2.8 * t + 1.1);
-          // Micro variation (~7.3Hz) — formant-like fine detail
-          const micro = 0.5 + 0.5 * Math.sin(2 * Math.PI * 7.3 * t + 0.5);
-          // Combined envelope: phrase gates overall energy, syllable/micro add texture
-          const envelope = Math.pow(phrase, 0.5) * (0.35 + 0.45 * syllable + 0.2 * micro);
-
-          const n = bars.length;
-          const newHeights = bars.map((baseH, i) => {
-            if (baseH === 0) return 0;
-            const pos = i / n;
-            // Two waves propagating in opposite directions at different speeds —
-            // creates the organic left-right energy flow of a voice waveform
-            const wave1 = 0.5 + 0.5 * Math.sin(pos * Math.PI * 6 - 2 * Math.PI * 3.5 * t);
-            const wave2 = 0.5 + 0.5 * Math.sin(pos * Math.PI * 3 + 2 * Math.PI * 2.1 * t + 0.7);
-            const spatial = 0.4 * wave1 + 0.6 * wave2;
-            const h = baseH * 1.4 * envelope * (0.2 + 0.8 * spatial);
-            return Math.max(1.5, Math.min(h, 16));
-          });
-
-          setHeights(newHeights);
-          rafRef.current = requestAnimationFrame(tick);
-        };
-        rafRef.current = requestAnimationFrame(tick);
-        return () => cancelAnimationFrame(rafRef.current);
-      }, [animating]);
-
       return (
         <div style={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-          {heights.map((h, i) => (
+          {bars.map((h, i) => (
             <div key={i} style={{
               width: 3,
               height: Math.max(h * 1.2, 0),
@@ -257,7 +213,10 @@
               borderRadius: 1,
               flexShrink: 0,
               transformOrigin: 'center',
-              transition: animating ? 'none' : ('height ' + EASE),
+              transition: isLive ? 'height 0.08s ease-out' : ('height ' + EASE),
+              animation: animating && h > 0
+                ? 'barPulse ' + BAR_ANIM[i].dur + ' ' + BAR_ANIM[i].dly + ' ease-in-out infinite'
+                : 'none',
             }} />
           ))}
         </div>
