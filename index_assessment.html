@@ -897,7 +897,11 @@
 
       const handleMicMuteToggle = () => {
         if (introPhase !== 'challenge') return;
-        setIsMuted(prev => !prev);
+        if (stateKey === 'text') {
+          setStateKey('closed');
+        } else {
+          setIsMuted(prev => !prev);
+        }
       };
 
       const handleKeyboardClick = () => {
