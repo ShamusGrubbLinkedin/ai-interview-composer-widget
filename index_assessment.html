@@ -1152,7 +1152,7 @@
                     flexDirection: 'column',
                   }}
                 >
-                  <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 8, marginTop: 'auto' }}>
+                  <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 0, marginTop: 'auto' }}>
                     {introPhase === 'welcome' && (
                       <StreamingAiMessage
                         key="intro-welcome"
@@ -1164,26 +1164,45 @@
                       <AiMessage>{WELCOME_MSG}</AiMessage>
                     )}
                     {(introPhase === 'countdown' || introPhase === 'challenge') && (
-                      <CountdownBubble count={countdownVal} />
+                      <div style={{ marginTop: 8 }}><CountdownBubble count={countdownVal} /></div>
                     )}
                     {introPhase === 'challenge' && (
-                      <div style={{ animation: 'slideUp 0.4s ease' }}>
+                      <div style={{ marginTop: 8, animation: 'slideUp 0.4s ease' }}>
                         <ChallengeBox />
                       </div>
                     )}
                     {extraMessages.map((msg, i) => {
                       const isLast = i === extraMessages.length - 1;
-                      if (msg.type === 'voice') return <VoiceUserMessage key={'extra-' + i} animate={isLast}>{msg.text}</VoiceUserMessage>;
-                      if (msg.type === 'user') return <UserMessage key={'extra-' + i} animate={isLast}>{msg.text}</UserMessage>;
-                      return <AiMessage key={'extra-' + i} animate={isLast}>{msg.text}</AiMessage>;
+                      const getSpeaker = t => (t === 'ai') ? 'ai' : 'user';
+                      const curSpeaker = getSpeaker(msg.type);
+                      let mt;
+                      if (i === 0) {
+                        mt = 24; // always new turn after challenge box
+                      } else {
+                        const prevSpeaker = getSpeaker(extraMessages[i - 1].type);
+                        mt = prevSpeaker === curSpeaker ? 8 : 24;
+                      }
+                      const el = msg.type === 'voice'
+                        ? <VoiceUserMessage key={'extra-' + i} animate={isLast}>{msg.text}</VoiceUserMessage>
+                        : msg.type === 'user'
+                          ? <UserMessage key={'extra-' + i} animate={isLast}>{msg.text}</UserMessage>
+                          : <AiMessage key={'extra-' + i} animate={isLast}>{msg.text}</AiMessage>;
+                      return <div key={'wrap-' + i} style={{ marginTop: mt }}>{el}</div>;
                     })}
-                    {streamingText !== null && (
-                      <StreamingAiMessage
-                        key={'stream-' + streamingText}
-                        text={streamingText}
-                        onDone={() => handleStreamDone(streamingText)}
-                      />
-                    )}
+                    {streamingText !== null && (() => {
+                      const lastMsg = extraMessages[extraMessages.length - 1];
+                      const prevSpeaker = lastMsg ? (lastMsg.type === 'ai' ? 'ai' : 'user') : 'ai';
+                      const mt = extraMessages.length === 0 ? 24 : (prevSpeaker === 'ai' ? 8 : 24);
+                      return (
+                        <div style={{ marginTop: mt }}>
+                          <StreamingAiMessage
+                            key={'stream-' + streamingText}
+                            text={streamingText}
+                            onDone={() => handleStreamDone(streamingText)}
+                          />
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
 
