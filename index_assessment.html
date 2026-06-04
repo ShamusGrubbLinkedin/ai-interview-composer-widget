@@ -681,6 +681,10 @@
 
     // ── Bottom Bar ─────────────────────────────────────────────────────────────
     function BottomBar({ onFinish }) {
+      const [recHover, setRecHover] = useState(false);
+      const [camHover, setCamHover] = useState(false);
+      const [gearHover, setGearHover] = useState(false);
+      const [cameraOff, setCameraOff] = useState(false);
       return (
         <div style={{
           background: '#1b1f23',
@@ -711,15 +715,18 @@
                 alignItems: 'center',
                 justifyContent: 'center',
                 gap: 8,
-              }}>
+                cursor: 'pointer',
+              }}
+              onMouseEnter={() => setRecHover(true)}
+              onMouseLeave={() => setRecHover(false)}>
                 <div style={{
                   width: 8, height: 8, borderRadius: '50%',
-                  background: '#fd93a3',
+                  background: recHover ? '#FFFFFF' : '#fd93a3',
                   flexShrink: 0,
                   animation: 'timerPulse 1.4s ease-in-out infinite',
                 }} />
                 <span style={{
-                  fontSize: 14, fontWeight: 500, color: 'rgba(255,255,255,0.6)',
+                  fontSize: 14, fontWeight: 500, color: recHover ? '#FFFFFF' : 'rgba(255,255,255,0.6)',
                   fontFamily: "'SF Pro Text', -apple-system, sans-serif",
                   lineHeight: '17.5px',
                   whiteSpace: 'nowrap',
@@ -734,10 +741,19 @@
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   padding: '0 16px',
                   cursor: 'pointer',
-                }}>
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M3 3H11V13H3C1.9 13 1 12.1 1 11V5C1 3.9 1.9 3 3 3ZM13.5 4L12 4.75V11.25L13.5 12H15V4H13.5Z" fill="#9A9A9B"/>
-                  </svg>
+                }}
+                onMouseEnter={() => setCamHover(true)}
+                onMouseLeave={() => setCamHover(false)}
+                onClick={() => setCameraOff(prev => !prev)}>
+                  {cameraOff ? (
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M3 2H6V14H3V2ZM10 2V14H13V2H10Z" fill={camHover ? '#FFFFFF' : '#C1C1C1'}/>
+                    </svg>
+                  ) : (
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M3 3H11V13H3C1.9 13 1 12.1 1 11V5C1 3.9 1.9 3 3 3ZM13.5 4L12 4.75V11.25L13.5 12H15V4H13.5Z" fill={camHover ? '#FFFFFF' : '#9A9A9B'}/>
+                    </svg>
+                  )}
                 </div>
                 <div style={{
                   height: 32, borderRadius: 24,
@@ -745,9 +761,11 @@
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   padding: '0 16px',
                   cursor: 'pointer',
-                }}>
+                }}
+                onMouseEnter={() => setGearHover(true)}
+                onMouseLeave={() => setGearHover(false)}>
                   <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M6.03 1L3.02 2.76L3.95 5.2L3.59 5.83L1 6.22V9.74L3.55 10.13L3.93 10.78L3 13.22L6 14.98L7.6 12.95H8.36L9.97 15L12.99 13.24L12.05 10.82L12.42 10.17L15 9.78V6.26L12.42 5.87L12.06 5.24L13.02 2.78L10 1.02L8.37 3.08H7.66L6.03 1ZM8 6C9.1 6 10 6.9 10 8C10 9.1 9.1 10 8 10C6.9 10 6 9.1 6 8C6 6.9 6.9 6 8 6Z" fill="#9A9A9B"/>
+                    <path d="M6.03 1L3.02 2.76L3.95 5.2L3.59 5.83L1 6.22V9.74L3.55 10.13L3.93 10.78L3 13.22L6 14.98L7.6 12.95H8.36L9.97 15L12.99 13.24L12.05 10.82L12.42 10.17L15 9.78V6.26L12.42 5.87L12.06 5.24L13.02 2.78L10 1.02L8.37 3.08H7.66L6.03 1ZM8 6C9.1 6 10 6.9 10 8C10 9.1 9.1 10 8 10C6.9 10 6 9.1 6 8C6 6.9 6.9 6 8 6Z" fill={gearHover ? '#FFFFFF' : '#9A9A9B'}/>
                   </svg>
                 </div>
               </div>
