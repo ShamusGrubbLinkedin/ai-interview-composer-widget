@@ -847,6 +847,7 @@
       const [streamingText, setStreamingText] = useState(null);
       const [prevStateKey, setPrevStateKey] = useState('closed');
       const [isMuted, setIsMuted] = useState(false);
+      const [reviewPhase, setReviewPhase] = useState(false);
       const voiceTimerRef = useRef(null);
       const [introPhase, setIntroPhase] = useState('idle');
       const [countdownVal, setCountdownVal] = useState(5);
@@ -1005,6 +1006,37 @@
         }, 600);
       };
 
+      const handleInputFocus = () => {
+        clearInterval(typeRef.current);
+        clearTimeout(typeStartRef.current);
+        setUserFocused(true);
+        setTypedText('');
+      };
+
+      const handleFinishCoding = () => {
+        if (reviewPhase || introPhase !== 'challenge') return;
+        setReviewPhase(true);
+        // Reset timer to 10 minutes
+        clearInterval(timerRef.current);
+        setTimerSeconds(10 * 60);
+        timerRef.current = setInterval(() => {
+          setTimerSeconds(prev => {
+            if (prev <= 0) { clearInterval(timerRef.current); return 0; }
+            return prev - 1;
+          });
+        }, 1000);
+        // Stream first AI message
+        const msg1 = "Thanks for submitting your code! Now we'll go through reviewing the work that you've done.";
+        setPrevStateKey('closed');
+        setStateKey('ai');
+        setStreamingText(msg1);
+        setTimeout(() => {
+          if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight;
+        }, 50);
+      };
+
+      const REVIEW_FOLLOW_UP = "Let's start with your overall approach — can you walk me through why you chose the data structure you used and how it handles the problem's constraints?";
+
       const handleStreamDone = (text) => {
         setExtraMessages(prev => [...prev, { type: 'ai', text }]);
         setStreamingText(null);
@@ -1012,13 +1044,17 @@
         setTimeout(() => {
           if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight;
         }, 50);
-      };
-
-      const handleInputFocus = () => {
-        clearInterval(typeRef.current);
-        clearTimeout(typeStartRef.current);
-        setUserFocused(true);
-        setTypedText('');
+        // If this was the review intro, auto-post follow-up question
+        if (reviewPhase && text.startsWith("Thanks for submitting")) {
+          setTimeout(() => {
+            setPrevStateKey('closed');
+            setStateKey('ai');
+            setStreamingText(REVIEW_FOLLOW_UP);
+            setTimeout(() => {
+              if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight;
+            }, 50);
+          }, 1800);
+        }
       };
 
       return (
@@ -1168,7 +1204,7 @@
           </div>
 
           {/* Bottom bar */}
-          <BottomBar onFinish={() => {}} />
+          <BottomBar onFinish={handleFinishCoding} />
         </div>
       );
     }
