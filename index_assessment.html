@@ -899,6 +899,7 @@
         if (introPhase !== 'challenge') return;
         if (stateKey === 'text') {
           setStateKey('closed');
+          setIsMuted(false);
         } else {
           setIsMuted(prev => !prev);
         }
@@ -906,7 +907,13 @@
 
       const handleKeyboardClick = () => {
         if (streamingText !== null || introPhase !== 'challenge') return;
-        setStateKey(prev => prev === 'text' ? 'closed' : 'text');
+        if (stateKey === 'text') {
+          setStateKey('closed');
+          setIsMuted(false);
+        } else {
+          setStateKey('text');
+          setIsMuted(true);
+        }
       };
 
       useEffect(() => {
