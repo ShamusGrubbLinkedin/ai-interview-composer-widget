@@ -258,7 +258,7 @@
     }
 
     // ── Voice Widget ───────────────────────────────────────────────────────────
-    function VoiceWidget({ stateKey, onKeyboardClick, onMicClick, onStopClick, onSend, typedText, onTextChange, userFocused, onInputFocus }) {
+    function VoiceWidget({ stateKey, isMuted, onKeyboardClick, onMicMuteToggle, onWaveClick, onStopClick, onSend, typedText, onTextChange, userFocused, onInputFocus }) {
       const cfg = STATES[stateKey];
       const [micHover, setMicHover] = useState(false);
       const [keyHover, setKeyHover] = useState(false);
@@ -283,11 +283,11 @@
           gap: 12,
           padding: '8px 28px',
         }}>
-          <div style={{ ...circleStyle(cfg.micBg), cursor: (cfg.textMode || stateKey === 'closed') ? 'pointer' : 'default' }}
-            onClick={cfg.textMode ? onMicClick : (stateKey === 'closed' ? onMicClick : null)}
+          <div style={{ ...circleStyle(cfg.micBg), cursor: 'pointer' }}
+            onClick={onMicMuteToggle}
             onMouseEnter={() => setMicHover(true)}
             onMouseLeave={() => setMicHover(false)}>
-            {cfg.textMode ? <MicMutedIcon color={micColor} /> : <MicIcon color={micColor} />}
+            {isMuted ? <MicMutedIcon color={micColor} /> : <MicIcon color={micColor} />}
           </div>
 
           {!cfg.textMode && (
@@ -304,8 +304,11 @@
               alignItems: 'center',
               paddingLeft: 16,
               paddingRight: 16,
+              cursor: stateKey === 'closed' ? 'pointer' : 'default',
               transition: 'width ' + EASE + ', margin-left ' + EASE + ', background ' + EASE,
-            }}>
+            }}
+            onClick={stateKey === 'closed' ? onWaveClick : null}
+            >
               <div style={{ overflow: 'hidden', flex: 1, display: 'flex', justifyContent: 'center' }}>
                 <WaveformBars bars={cfg.bars} animating={cfg.animating} color={isActive ? '#FFFFFF' : '#D9D9D9'} />
               </div>
@@ -821,6 +824,7 @@
       const [extraMessages, setExtraMessages] = useState([]);
       const [streamingText, setStreamingText] = useState(null);
       const [prevStateKey, setPrevStateKey] = useState('closed');
+      const [isMuted, setIsMuted] = useState(false);
       const voiceTimerRef = useRef(null);
       const [introPhase, setIntroPhase] = useState('idle');
       const [countdownVal, setCountdownVal] = useState(5);
@@ -832,7 +836,7 @@
       const timerRef = useRef(null);
       const PLACEHOLDER = 'Ask me anything';
 
-      const handleMicClick = () => {
+      const handleWaveClick = () => {
         if (introPhase !== 'challenge' || streamingText !== null) return;
         const response = VOICE_RESPONSES[voiceIndex % VOICE_RESPONSES.length];
         voiceIndex++;
@@ -866,6 +870,11 @@
         } else {
           setStateKey('closed');
         }
+      };
+
+      const handleMicMuteToggle = () => {
+        if (introPhase !== 'challenge') return;
+        setIsMuted(prev => !prev);
       };
 
       const handleKeyboardClick = () => {
@@ -1117,8 +1126,10 @@
                 }}>
                   <VoiceWidget
                     stateKey={stateKey}
+                    isMuted={isMuted}
                     onKeyboardClick={handleKeyboardClick}
-                    onMicClick={handleMicClick}
+                    onMicMuteToggle={handleMicMuteToggle}
+                    onWaveClick={handleWaveClick}
                     onStopClick={handleStopClick}
                     onSend={handleSend}
                     typedText={typedText}
