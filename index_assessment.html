@@ -685,6 +685,7 @@
       const [camHover, setCamHover] = useState(false);
       const [gearHover, setGearHover] = useState(false);
       const [cameraOff, setCameraOff] = useState(false);
+      const [finishHover, setFinishHover] = useState(false);
       return (
         <div style={{
           background: '#1b1f23',
@@ -789,18 +790,20 @@
           <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-end' }}>
             <button
               onClick={onFinish}
+              onMouseEnter={() => setFinishHover(true)}
+              onMouseLeave={() => setFinishHover(false)}
               style={{
-                background: '#71b7fb',
+                background: finishHover ? '#213E44' : '#71b7fb',
                 border: 'none',
                 borderRadius: 24,
                 padding: '12px 20px',
                 fontSize: 16,
                 fontWeight: 600,
-                color: '#0B1219',
+                color: finishHover ? '#CCCCCC' : '#0B1219',
                 cursor: 'pointer',
                 fontFamily: "'SF Pro Text', -apple-system, sans-serif",
                 lineHeight: '20px',
-                transition: 'background 0.15s ease',
+                transition: 'background 0.15s ease, color 0.15s ease',
               }}
             >
               Finished Coding
