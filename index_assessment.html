@@ -206,7 +206,7 @@
     );
 
     // ── Waveform bars ──────────────────────────────────────────────────────────
-    function WaveformBars({ bars, animating }) {
+    function WaveformBars({ bars, animating, color = '#FFFFFF' }) {
       const [heights, setHeights] = useState(bars);
       const rafRef = useRef(null);
       const startRef = useRef(null);
@@ -246,7 +246,7 @@
             <div key={i} style={{
               width: 3,
               height: Math.max(h * 1.2, 0),
-              background: 'white',
+              background: color,
               borderRadius: 1,
               flexShrink: 0,
               transformOrigin: 'center',
@@ -307,7 +307,7 @@
               transition: 'width ' + EASE + ', margin-left ' + EASE + ', background ' + EASE,
             }}>
               <div style={{ overflow: 'hidden', flex: 1, display: 'flex', justifyContent: 'center' }}>
-                <WaveformBars bars={cfg.bars} animating={cfg.animating} />
+                <WaveformBars bars={cfg.bars} animating={cfg.animating} color={isActive ? '#FFFFFF' : '#D9D9D9'} />
               </div>
               <div style={{
                 width: cfg.showStop ? 16 : 0,
