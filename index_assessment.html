@@ -721,7 +721,7 @@
               onMouseLeave={() => setRecHover(false)}>
                 <div style={{
                   width: 8, height: 8, borderRadius: '50%',
-                  background: recHover ? '#FFFFFF' : '#fd93a3',
+                  background: recHover ? '#FFFFFF' : (cameraOff ? '#9A9A9B' : '#fd93a3'),
                   flexShrink: 0,
                   animation: 'timerPulse 1.4s ease-in-out infinite',
                 }} />
@@ -730,8 +730,9 @@
                   fontFamily: "'SF Pro Text', -apple-system, sans-serif",
                   lineHeight: '17.5px',
                   whiteSpace: 'nowrap',
+                  minWidth: 62, textAlign: 'left',
                 }}>
-                  Recording
+                  {cameraOff ? 'Paused' : 'Recording'}
                 </span>
               </div>
               <div style={{ display: 'flex', gap: 8 }}>
