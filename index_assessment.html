@@ -63,7 +63,7 @@
 
     /* scrollbar hidden but functional */
     .chat-scroll::-webkit-scrollbar { display: none; }
-    .chat-scroll { scrollbar-width: none; }
+    .chat-scroll { scrollbar-width: none; -ms-overflow-style: none; }
 
     input::placeholder { color: #999999; }
 
@@ -1145,7 +1145,7 @@
                   ref={chatRef}
                   className="chat-scroll"
                   style={{
-                    flex: 1, overflowY: 'auto',
+                    flex: 1, overflowY: 'scroll',
                     position: 'relative',
                     maskImage: 'linear-gradient(to bottom, transparent 0%, black 48px)',
                     display: 'flex',
