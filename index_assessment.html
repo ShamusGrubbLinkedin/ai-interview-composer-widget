@@ -1164,10 +1164,10 @@
                       <AiMessage>{WELCOME_MSG}</AiMessage>
                     )}
                     {(introPhase === 'countdown' || introPhase === 'challenge') && (
-                      <div style={{ marginTop: 8 }}><CountdownBubble count={countdownVal} /></div>
+                      <div style={{ marginTop: 0 }}><CountdownBubble count={countdownVal} /></div>
                     )}
                     {introPhase === 'challenge' && (
-                      <div style={{ marginTop: 8, animation: 'slideUp 0.4s ease' }}>
+                      <div style={{ marginTop: 0, animation: 'slideUp 0.4s ease' }}>
                         <ChallengeBox />
                       </div>
                     )}
@@ -1180,7 +1180,7 @@
                         mt = 24; // always new turn after challenge box
                       } else {
                         const prevSpeaker = getSpeaker(extraMessages[i - 1].type);
-                        mt = prevSpeaker === curSpeaker ? 8 : 24;
+                        mt = prevSpeaker === curSpeaker ? 0 : 24;
                       }
                       const el = msg.type === 'voice'
                         ? <VoiceUserMessage key={'extra-' + i} animate={isLast}>{msg.text}</VoiceUserMessage>
